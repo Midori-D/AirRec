@@ -347,9 +347,9 @@ final class AirRecordKeepAliveController: ObservableObject {
         isStopping = true
         cleanupSessions.insert(oldID)
         let finishTransport: () -> Void = { [weak self] in
-            // Serialize teardown: detach helper first, THEN let the helper
-            // detach host. Simultaneous Ctrl-C requests could stop both peers
-            // while each peer still needs to send the other's detach command.
+            // Serialize normal teardown and retain the old extension until
+            // both connections are released. Running targets are never
+            // interrupted; debugserver detaches them on stream shutdown.
             oldConnection?.stateUpdateHandler = nil
             oldConnection?.cancel()
             Task { @MainActor [weak self] in

@@ -190,23 +190,12 @@ impl<R: ReadWrite> Wire<R> {
         if self.target == Target::None { return Ok(()); }
         if !self.detach_on_error { return Err(error("safe detach was not established")); }
         if self.target != Target::Stopped {
-            // D and qProcessInfo do not have running-state async handlers in
-            // Apple's debugserver. Interrupt first, then detach from the stop.
-            self.socket.write_all(&[3]).await?;
-            self.socket.flush().await?;
-            loop {
-                match self.event().await? {
-                    Event::Ack => {},
-                    Event::Packet(payload) if stop_reply(&payload) => {
-                        self.target = Target::Stopped; break;
-                    }
-                    Event::Packet(payload) if exited(&payload) => {
-                        self.target = Target::None; return Ok(());
-                    }
-                    Event::Packet(payload) if output(&payload) => {},
-                    _ => return Err(error("debugger detach stop not confirmed")),
-                }
-            }
+            // Host and helper may both be debugging one another. Sending
+            // interrupts during concurrent teardown could stop BOTH processes
+            // before either can send D. Never interrupt a running/unknown
+            // target: close below and let the acknowledged detach-on-error
+            // setting detach it without a dependency on either process.
+            return Ok(());
         }
         if self.request(b"D").await? != b"OK" { return Err(error("debugger detach refused")); }
         self.target = Target::None;
@@ -250,7 +239,7 @@ async fn drive<R: ReadWrite>(socket: R, pid: u32, callback: impl Fn(u32) -> bool
 }
 
 /// Maintain a debugger connection to a DIFFERENT, trusted host/helper PID.
-/// Events: 0 poll continuation, 1 continue sent, 2 cleanup (return ignored).
+/// Events: 0 poll continuation, 1 continue sent, 2 cleanup begun (return ignored).
 /// The callback must not reenter this runtime. Event 1 proves a connection was
 /// established, not the target's trace state; the host verifies P_TRACED itself.
 pub async fn maintain(provider: &mut impl RsdProvider, handshake: &mut RsdHandshake,
@@ -291,10 +280,9 @@ mod tests {
         command(stream, b"qProcessInfo").await; response(stream, format!("pid:{pid:x};cputype:100000c;").as_bytes(), true).await;
         command(stream, b"c").await;
     }
-    async fn finish(stream: &mut tokio::io::DuplexStream) {
-        let mut interrupt = [0u8]; stream.read_exact(&mut interrupt).await.unwrap(); assert_eq!(interrupt, [3]);
-        response(stream, b"T02thread:1;", true).await;
-        command(stream, b"D").await; response(stream, b"OK", true).await;
+    async fn running_close_has_no_interrupt_detach_or_kill(stream: &mut tokio::io::DuplexStream) {
+        let mut tail = Vec::new(); stream.read_to_end(&mut tail).await.unwrap();
+        assert!(tail.is_empty(), "running teardown must only close the safe-detach connection");
     }
     #[test]
     fn parser_retains_fragmented_packets_and_coalesced_ack() {
@@ -333,11 +321,11 @@ mod tests {
         assert!(target_allowed(if std::process::id() == 42 {43} else {42}));
     }
     #[tokio::test]
-    async fn cancel_after_ready_interrupts_then_detaches_without_kill() {
+    async fn cancel_after_ready_closes_without_interrupt_detach_or_kill() {
         let (client, mut server) = tokio::io::duplex(16384);
         let ready = Arc::new(AtomicBool::new(false)); let flag = ready.clone();
         let cleanup = Arc::new(AtomicUsize::new(0)); let count = cleanup.clone();
-        let peer = tokio::spawn(async move { start(&mut server, 0x1234).await; finish(&mut server).await; });
+        let peer = tokio::spawn(async move { start(&mut server, 0x1234).await; running_close_has_no_interrupt_detach_or_kill(&mut server).await; });
         let result = drive(client, 0x1234, move |event| {
             if event == 1 { flag.store(true, Ordering::SeqCst); }
             if event == 2 { count.fetch_add(1, Ordering::SeqCst); }
@@ -412,18 +400,31 @@ mod tests {
         peer.await.unwrap();
     }
     #[tokio::test]
-    async fn unresponsive_detach_is_bounded_and_connection_is_closed() {
+    async fn unresponsive_stopped_detach_is_bounded_and_connection_is_closed() {
         let (client, mut server) = tokio::io::duplex(16384);
-        let ready = Arc::new(AtomicBool::new(false)); let flag = ready.clone();
         let peer = tokio::spawn(async move {
             start(&mut server, 0x1234).await;
-            let mut interrupt = [0u8]; server.read_exact(&mut interrupt).await.unwrap(); assert_eq!(interrupt, [3]);
+            response(&mut server, b"T0bthread:1;", true).await;
+            command(&mut server, b"D").await;
             let mut tail = Vec::new(); server.read_to_end(&mut tail).await.unwrap(); assert!(tail.is_empty());
         });
-        let result = tokio::time::timeout(Duration::from_secs(1), drive(client, 0x1234, move |event| {
-            if event == 1 { flag.store(true, Ordering::SeqCst); }
-            !flag.load(Ordering::SeqCst)
-        }, timing(), tokio::time::Instant::now() + timing().startup)).await;
+        let result = tokio::time::timeout(Duration::from_secs(1), drive(client, 0x1234, |_| true,
+            timing(), tokio::time::Instant::now() + timing().startup)).await;
         assert!(result.unwrap().is_err()); peer.await.unwrap();
+    }
+    #[tokio::test]
+    async fn cancellation_during_attach_closes_without_interrupt_detach_or_kill() {
+        let (client, mut server) = tokio::io::duplex(16384);
+        let enabled = Arc::new(AtomicBool::new(true)); let flag = enabled.clone();
+        let peer = tokio::spawn(async move {
+            command(&mut server, b"QStartNoAckMode").await; response(&mut server, b"OK", false).await;
+            command(&mut server, b"QSetDetachOnError:1").await; response(&mut server, b"OK", true).await;
+            command(&mut server, b"vAttach;1234").await;
+            enabled.store(false, Ordering::SeqCst);
+            running_close_has_no_interrupt_detach_or_kill(&mut server).await;
+        });
+        assert!(drive(client, 0x1234, move |_| flag.load(Ordering::SeqCst), timing(),
+            tokio::time::Instant::now() + timing().startup).await.is_err());
+        peer.await.unwrap();
     }
 }

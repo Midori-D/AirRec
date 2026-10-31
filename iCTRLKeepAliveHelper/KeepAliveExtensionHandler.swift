@@ -171,9 +171,9 @@ final class KeepAliveExtensionHandler: NSObject, NSExtensionRequestHandling {
             }
             heartbeat = timer
             timer.resume()
-        case .cleanedUp:
-            // Completion follows on the same callback queue. No new request is
-            // accepted after the debugger cleanup event.
+        case .cleaningUp:
+            // Cleanup has started; actual completion is a separate callback.
+            // No new request is accepted after this event.
             stop(errorCode: 10)
         }
     }

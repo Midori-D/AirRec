@@ -6,8 +6,6 @@
     <string>AirRecord KeepAlive Helper</string>
     <key>AirRecordKeepAliveHelper</key>
     <true/>
-    <key>AirRecordKeepAliveHelper</key>
-    <true/>
     <key>NSExtension</key>
     <dict>
         <key>NSExtensionAttributes</key>

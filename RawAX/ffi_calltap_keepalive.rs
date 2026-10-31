@@ -4,7 +4,7 @@ use crate::{IdeviceFfiError, ffi_err, run_sync_local,
             core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
 use idevice::IdeviceError;
 
-/// Event 0 polls continuation; 1 means continue was sent; 2 means cleanup.
+/// Event 0 polls continuation; 1 means continue was sent; 2 means cleanup begun.
 /// A callback must be thread-safe and must not reenter the FFI runtime.
 pub type CallTapDebugKeepAliveCallback = Option<unsafe extern "C" fn(*mut c_void, u32) -> bool>;
 

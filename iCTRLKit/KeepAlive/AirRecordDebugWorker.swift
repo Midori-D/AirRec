@@ -7,7 +7,7 @@ import IDevice
 /// A single worker owns every Rust handle from creation through cleanup.
 /// It never attaches to its own process or accepts an arbitrary target command.
 final class AirRecordDebugWorker: @unchecked Sendable {
-    enum Event { case attached, cleanedUp }
+    enum Event { case attached, cleaningUp }
     struct Failure: LocalizedError {
         enum Stage: String { case target, pairing, tunnel, debugger, internalFailure }
         let stage: Stage
@@ -65,7 +65,7 @@ final class AirRecordDebugWorker: @unchecked Sendable {
             if allowed && !attachedReported { attachedReported = true; report = .attached }
             else { report = nil }
         case 2:
-            if !cleanupReported { cleanupReported = true; report = .cleanedUp }
+            if !cleanupReported { cleanupReported = true; report = .cleaningUp }
             else { report = nil }
         default:
             lock.unlock()
@@ -102,7 +102,7 @@ final class AirRecordDebugWorker: @unchecked Sendable {
     }
 
     private func connectAndHold() throws {
-        guard targetPID > 0, targetPID != UInt32(getpid()) else { throw Failure(stage: .target, code: 0) }
+        guard targetPID > 1, targetPID != UInt32(getpid()) else { throw Failure(stage: .target, code: 0) }
         guard mayContinue else { return }
         lock.lock()
         let bytes = pairingData
