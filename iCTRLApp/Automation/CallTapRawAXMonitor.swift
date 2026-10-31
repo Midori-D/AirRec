@@ -312,6 +312,12 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
             // synchronously, and never let an old expiration pause a new run.
             guard let self, self.preparationID == request else { return }
             self.endBackgroundLease()
+            if self.keepAlive.isEnabled {
+                // Expiration may race a delayed receive callback too. Classify
+                // it through the same challenge path before any teardown.
+                self.keepAlive.validateConnection()
+                if !self.isRunning || self.keepAlive.isRechecking { return }
+            }
             if self.keepAlive.hasLiveLease {
                 self.recordEvent("일반 백그라운드 시간은 끝났으며 실제 Helper 연결로 감시를 유지합니다.")
                 return
