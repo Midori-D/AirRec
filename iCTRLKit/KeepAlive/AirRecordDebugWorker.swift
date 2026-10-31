@@ -20,6 +20,7 @@ final class AirRecordDebugWorker: @unchecked Sendable {
     private var cancelled = false
     private var attachedReported = false
     private var cleanupReported = false
+    private var attachedState = false
     private var pairingData: Data?
     private let targetPID: UInt32
     private let onEvent: (Event) -> Void
@@ -50,6 +51,13 @@ final class AirRecordDebugWorker: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Updated by the FFI thread before queued UI/IPC callbacks. A delayed
+    /// attached event must never mask a debugger that has already ended.
+    var isAttached: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return attachedState && !cancelled
+    }
+
     private var mayContinue: Bool {
         lock.lock(); defer { lock.unlock() }
         return !cancelled
@@ -62,9 +70,14 @@ final class AirRecordDebugWorker: @unchecked Sendable {
         switch event {
         case 0: report = nil
         case 1:
-            if allowed && !attachedReported { attachedReported = true; report = .attached }
+            if allowed && !attachedReported && !cleanupReported {
+                attachedState = true
+                attachedReported = true
+                report = .attached
+            }
             else { report = nil }
         case 2:
+            attachedState = false
             if !cleanupReported { cleanupReported = true; report = .cleaningUp }
             else { report = nil }
         default:
@@ -95,6 +108,7 @@ final class AirRecordDebugWorker: @unchecked Sendable {
             failure = mayContinue ? Failure(stage: .internalFailure, code: 0) : nil
         }
         lock.lock()
+        attachedState = false
         pairingData = nil
         lock.unlock()
         let receiver = onCompletion

@@ -54,13 +54,15 @@ private final class CallTapRawAXGate: @unchecked Sendable {
         deadlines = deadlines.filter { active.contains($0.key) }
     }
 
-    func start() -> UInt64 {
+    func start(preservingWindows: Bool = false) -> UInt64 {
         lock.lock()
         defer { lock.unlock() }
         generation &+= 1
         enabled = true
-        policy.resume()
-        deadlines.removeAll()
+        if !preservingWindows {
+            policy.resume()
+            deadlines.removeAll()
+        }
         return generation
     }
 
@@ -157,6 +159,7 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
     private let keepAlive = AirRecordKeepAliveController.shared
     private var timer: Timer?
     private var workerIsRunning = false
+    private var waitingForHelperRecheck = false
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     private var preparationID = UUID()
     private var shortcutPreparation: Task<Bool, Never>?
@@ -169,9 +172,19 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
         isEnabled = defaults.bool(forKey: Self.enabledKey)
         super.init()
         keepAlive.onLeaseLost = { [weak self] message in
-            guard let self, self.isRunning || self.isPreparing else { return }
+            guard let self, self.isRunning || self.isPreparing || self.waitingForHelperRecheck else { return }
             self.pause(message: message + " 자동 시작 설정은 유지됩니다.")
         }
+        keepAlive.onLeaseRechecking = { [weak self] message in
+            guard let self, self.isEnabled, self.isRunning else { return }
+            self.pause(message: message, preservingKeepAlive: true)
+            self.waitingForHelperRecheck = true
+        }
+        keepAlive.onLeaseRecovered = { [weak self] in
+            guard let self, self.isEnabled, self.waitingForHelperRecheck, !self.isPreparing else { return }
+            Task { @MainActor in await self.prepare() }
+        }
+        keepAlive.onDiagnostic = { [weak self] message in self?.recordEvent("Helper 확인: " + message) }
         if isEnabled { status = "자동 시작 설정이 유지되어 있습니다. 연결을 확인하면 재개합니다." }
     }
 
@@ -186,6 +199,7 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
 
     func resumeIfEnabled() async {
         guard isEnabled, UIApplication.shared.applicationState == .active else { return }
+        keepAlive.validateConnection()
         await prepare()
     }
 
@@ -244,6 +258,7 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
 
     private func prepare(retryTunnelFor: TimeInterval = 8) async {
         guard isEnabled, !isRunning, !isPreparing else { return }
+        let preserveWindows = waitingForHelperRecheck
         isPreparing = true
         let request = UUID()
         preparationID = request
@@ -314,9 +329,10 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
 
         observer.setDelegate(self, queue: .main)
         updateCalls()
-        _ = gate.start()
+        _ = gate.start(preservingWindows: preserveWindows)
         isPreparing = false
         isRunning = true
+        waitingForHelperRecheck = false
         setStatus(waitingStatus)
         evaluate()
     }
@@ -338,6 +354,7 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
             previous?.cancel()
         }
         preparationID = UUID()
+        waitingForHelperRecheck = false
         gate.stop() // Invalidates worker callbacks before touching UI/task state.
         isRunning = false
         isPreparing = false
@@ -377,8 +394,12 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
     private func evaluate() {
         guard isRunning else { return }
         if keepAlive.isEnabled && !keepAlive.hasLiveLease {
-            pause(message: "Helper 연결을 확인하지 못해 감시를 중지했습니다. 자동 시작 설정은 유지됩니다.")
-            return
+            keepAlive.validateConnection()
+            guard isRunning else { return }
+            if !keepAlive.hasLiveLease {
+                pause(message: keepAlive.status, preservingKeepAlive: keepAlive.isRechecking)
+                return
+            }
         }
         updateCalls()
         guard !workerIsRunning else { return }

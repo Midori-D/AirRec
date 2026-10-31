@@ -16,7 +16,11 @@ final class AirRecordKeepAliveController: ObservableObject {
     @Published private(set) var isConnected = false
     @Published private(set) var isStarting = false
     @Published private(set) var isStopping = false
+    @Published private(set) var isRechecking = false
     var onLeaseLost: ((String) -> Void)?
+    var onLeaseRechecking: ((String) -> Void)?
+    var onLeaseRecovered: (() -> Void)?
+    var onDiagnostic: ((String) -> Void)?
 
     private let defaults: UserDefaults
     private static let enabledKey = "AirRecord.keepAlive.debugger.enabled"
@@ -39,13 +43,15 @@ final class AirRecordKeepAliveController: ObservableObject {
     private var cleanupWaiters: [CheckedContinuation<Void, Never>] = []
     private var retiring: [UUID: () -> Void] = [:]
     private var cleanupSessions: Set<UUID> = []
+    private var lastPollAt: TimeInterval?
+    private var lastPollGap: TimeInterval = 0
 
     var isLiveContainer: Bool {
         ProcessInfo.processInfo.environment["LC_HOME_PATH"] != nil
     }
 
     var hasLiveLease: Bool {
-        isConnected && connection != nil
+        isConnected && !isRechecking && worker?.isAttached == true && connection != nil
             && lease.isValid(now: ProcessInfo.processInfo.systemUptime,
                              hostTraced: airrecord_process_is_traced())
     }
@@ -66,7 +72,7 @@ final class AirRecordKeepAliveController: ObservableObject {
         if isStopping { await withCheckedContinuation { cleanupWaiters.append($0) } }
         guard isEnabled else { return false }
         if hasLiveLease { return true }
-        if isStarting {
+        if isStarting || isRechecking {
             return await withCheckedContinuation { waiters.append($0) }
         }
         if session != nil {
@@ -87,7 +93,7 @@ final class AirRecordKeepAliveController: ObservableObject {
             return false
         }
         guard !airrecord_process_is_traced() else {
-            status = "다른 디버거가 연결되어 있습니다. 기존 연결을 종료한 뒤 다시 시도하세요."
+            status = "현재 앱이 이미 추적 상태여서 새 연결을 시작하지 않았습니다. AirRecord를 완전히 종료한 뒤 홈 화면에서 다시 실행하세요."
             return false
         }
         guard let data = try? Data(contentsOf: PairingFileStore.storedURL), !data.isEmpty,
@@ -110,6 +116,8 @@ final class AirRecordKeepAliveController: ObservableObject {
         nonce = random.map { String(format: "%02x", $0) }.joined()
         pairingData = data
         beganAt = ProcessInfo.processInfo.systemUptime
+        lastPollAt = beganAt
+        lastPollGap = 0
         lease.begin(id)
         isStarting = true
         status = "Helper와 양방향 개발자 연결을 준비합니다. 완료될 때까지 앱을 열어 두세요."
@@ -136,7 +144,7 @@ final class AirRecordKeepAliveController: ObservableObject {
             }
             listener.start(queue: .main)
             let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.checkHealth(session: id) }
+                Task { @MainActor in self?.checkHealth(session: id, isPoll: true) }
             }
             self.timer = timer
             RunLoop.main.add(timer, forMode: .common)
@@ -233,7 +241,7 @@ final class AirRecordKeepAliveController: ObservableObject {
                     guard let self else { return }
                     if let cleanup = self.retiring.removeValue(forKey: id) { cleanup(); return }
                     guard self.session == id else { return }
-                    let code = failure.map { " (코드 \($0.code))" } ?? ""
+                    let code = failure.map { " (\($0.stage.rawValue), 코드 \($0.code))" } ?? ""
                     self.fail("Helper를 유지하는 디버거 연결이 종료됐습니다.\(code)")
                 }
             })
@@ -241,10 +249,38 @@ final class AirRecordKeepAliveController: ObservableObject {
             worker.start()
         case "heartbeat":
             guard configured else { fail("인증 전 Helper 상태 응답을 거절했습니다."); return }
+            let now = ProcessInfo.processInfo.systemUptime
+            guard let sampledAt = message.sampledAt, sampledAt.isFinite,
+                  sampledAt <= now, now - sampledAt <= 6,
+                  sampledAt >= (lease.heartbeat ?? 0) else { return }
             lease.receivedHeartbeat(id, hostAttached: message.hostAttached == true,
                                     helperTraced: message.selfTraced == true,
-                                    now: ProcessInfo.processInfo.systemUptime)
+                                    now: now, sampledAt: sampledAt)
+            if isConnected && (message.hostAttached != true || message.selfTraced != true) {
+                fail("Helper가 실제 디버거·추적 상태 해제를 보고해 감시를 중지했습니다.")
+                return
+            }
             checkHealth(session: id)
+        case "pong":
+            guard configured, isRechecking, let pingID = message.pingID,
+                  pingID == lease.pendingID, let sampledAt = message.sampledAt,
+                  let sentAt = lease.sentAt, sampledAt >= sentAt else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            if sampledAt.isFinite, sampledAt <= now, now - sampledAt <= 6,
+               (message.hostAttached != true || message.selfTraced != true) {
+                fail("Helper의 새 응답에서 디버거·추적 상태 해제를 확인했습니다.")
+                return
+            }
+            guard lease.acceptPong(id, pingID: pingID, sampledAt: sampledAt,
+                                  hostAttached: message.hostAttached == true,
+                                  helperTraced: message.selfTraced == true,
+                                  hostTraced: airrecord_process_is_traced(), now: now),
+                  worker?.isAttached == true else { return }
+            isRechecking = false
+            status = "Helper의 새 응답으로 연결을 다시 확인했습니다. 응답 공백 중 감시 여부는 확인되지 않았습니다."
+            recordEvidence("새 응답으로 같은 연결 재확인", now: now)
+            finishWaiters(true)
+            onLeaseRecovered?()
         case "error":
             fail("Helper 개발자 연결에 실패했습니다. (코드 \(message.errorCode ?? -1))")
         case "stopped": fail("Helper가 연결을 종료했습니다.")
@@ -282,10 +318,30 @@ final class AirRecordKeepAliveController: ObservableObject {
         })
     }
 
-    private func checkHealth(session id: UUID) {
+    func validateConnection() {
+        guard let session else { return }
+        checkHealth(session: session)
+    }
+
+    private func checkHealth(session id: UUID, isPoll: Bool = false) {
         guard session == id else { return }
-        let valid = lease.isValid(now: ProcessInfo.processInfo.systemUptime,
-                                  hostTraced: airrecord_process_is_traced())
+        let now = ProcessInfo.processInfo.systemUptime
+        if isPoll {
+            if let lastPollAt { lastPollGap = max(0, now - lastPollAt) }
+            lastPollAt = now
+        }
+        let hostTraced = airrecord_process_is_traced()
+        if isConnected {
+            guard hostTraced else { fail("앱의 추적 상태가 해제되어 감시를 중지했습니다."); return }
+            guard worker?.isAttached == true else { fail("앱에서 Helper로 연결한 디버거가 종료되어 감시를 중지했습니다."); return }
+            if isRechecking {
+                if lease.recheckExpired(now: now) {
+                    fail("Helper가 재확인 요청에 응답하지 않아 감시를 중지했습니다.")
+                }
+                return
+            }
+        }
+        let valid = lease.isValid(now: now, hostTraced: hostTraced)
         if valid {
             if !isConnected {
                 isConnected = true
@@ -294,10 +350,39 @@ final class AirRecordKeepAliveController: ObservableObject {
                 finishWaiters(true)
             }
         } else if isConnected {
-            fail("디버거 연결 또는 Helper 응답이 끊겨 감시를 중지했습니다.")
-        } else if ProcessInfo.processInfo.systemUptime - beganAt > 60 {
+            if case .staleHeartbeat? = lease.issue(now: now, hostTraced: hostTraced) {
+                beginRecheck(session: id, now: now)
+            } else {
+                fail("Helper의 최신 추적·연결 상태를 확인하지 못해 감시를 중지했습니다.")
+            }
+        } else if now - beganAt > 60 {
             fail("Helper 연결 준비 시간이 끝났습니다. VPN·개발자 디스크·서명을 확인하세요.")
         }
+    }
+
+    private func beginRecheck(session id: UUID, now: TimeInterval) {
+        guard !isRechecking else { return }
+        guard let pingID = lease.beginRecheck(id, now: now) else {
+            fail("Helper 재확인 요청을 만들지 못했습니다.")
+            return
+        }
+        isRechecking = true
+        status = "Helper 응답이 늦어 새 응답을 확인 중입니다. 녹음 버튼 입력은 잠시 중지합니다."
+        recordEvidence("응답 지연으로 재확인 시작", now: now)
+        onLeaseRechecking?(status)
+        send(AirRecordKeepAliveMessage(type: "ping", session: id.uuidString, nonce: nonce, pingID: pingID))
+    }
+
+    private func recordEvidence(_ reason: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        let age = lease.heartbeatAge(now: now).map { String(format: "%.1f초", $0) } ?? "없음"
+        let observedGap = max(lastPollGap, lastPollAt.map { max(0, now - $0) } ?? 0)
+        let state: String
+        switch UIApplication.shared.applicationState {
+        case .active: state = "활성"
+        case .background: state = "백그라운드"
+        default: state = "비활성"
+        }
+        onDiagnostic?("\(reason) · 앱=\(state), 추적=\(airrecord_process_is_traced() ? "유" : "무"), 작업연결=\(worker?.isAttached == true ? "유" : "무"), 응답경과=\(age), 검사간격=\(String(format: "%.1f초", observedGap))")
     }
 
     private func finishWaiters(_ result: Bool) {
@@ -308,6 +393,7 @@ final class AirRecordKeepAliveController: ObservableObject {
 
     private func fail(_ message: String) {
         let wasConnected = isConnected
+        recordEvidence(message)
         // Revoke input before asynchronous debugger/extension cleanup begins.
         if wasConnected { onLeaseLost?(message) }
         stop()
@@ -321,6 +407,7 @@ final class AirRecordKeepAliveController: ObservableObject {
         lease.invalidate()
         isConnected = false
         isStarting = false
+        isRechecking = false
         timer?.invalidate()
         timer = nil
         finishWaiters(false)

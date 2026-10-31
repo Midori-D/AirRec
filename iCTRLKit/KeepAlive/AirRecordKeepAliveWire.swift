@@ -15,17 +15,21 @@ struct AirRecordKeepAliveMessage: Codable {
     var hostAttached: Bool?
     var selfTraced: Bool?
     var errorCode: Int32?
+    var pingID: UInt64?
+    var sampledAt: TimeInterval?
 
     init(type: String, session: String, nonce: String,
          helperPID: UInt32? = nil, hostPID: UInt32? = nil,
          allowsDebugging: Bool? = nil, pairing: String? = nil,
          hostAttached: Bool? = nil, selfTraced: Bool? = nil,
-         errorCode: Int32? = nil) {
+         errorCode: Int32? = nil, pingID: UInt64? = nil,
+         sampledAt: TimeInterval? = nil) {
         self.type = type; self.session = session; self.nonce = nonce
         self.helperPID = helperPID; self.hostPID = hostPID
         self.allowsDebugging = allowsDebugging; self.pairing = pairing
         self.hostAttached = hostAttached; self.selfTraced = selfTraced
         self.errorCode = errorCode
+        self.pingID = pingID; self.sampledAt = sampledAt
     }
 }
 

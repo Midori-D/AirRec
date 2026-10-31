@@ -185,6 +185,116 @@ do {
 }
 
 do {
+    let current = UUID()
+    var lease = AirRecordKeepAliveLease()
+    check(lease.issue(now: 10, hostTraced: true) == .missingEvidence,
+          "an unconfigured lease reports missing evidence")
+    lease.begin(current)
+    lease.hostDebuggerReported(current)
+    lease.helperDebuggerReported(current)
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 10)
+    check(lease.issue(now: 17, hostTraced: true) == .staleHeartbeat,
+          "a delayed heartbeat is distinguished from a detached host")
+    check(lease.issue(now: 17, hostTraced: false) == .hostUntraced,
+          "actual host trace loss is not treated as only a delayed heartbeat")
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: false, now: 17)
+    check(lease.issue(now: 17, hostTraced: true) == .helperUntraced,
+          "negative helper trace evidence is diagnosed immediately")
+    check(lease.issue(now: .nan, hostTraced: true) == .invalidTime,
+          "non-finite diagnostic time fails closed")
+}
+
+do {
+    let current = UUID()
+    var lease = AirRecordKeepAliveLease()
+    lease.begin(current)
+    lease.hostDebuggerReported(current)
+    lease.helperDebuggerReported(current)
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 10)
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 17, sampledAt: 10)
+    check(lease.heartbeat == 10 && lease.issue(now: 17, hostTraced: true) == .staleHeartbeat,
+          "a queued old heartbeat cannot become fresh at receive time")
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 17, sampledAt: 18)
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 17, sampledAt: .infinity)
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: .nan, sampledAt: 17)
+    check(lease.heartbeat == 10, "future and non-finite samples cannot refresh evidence")
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 17, sampledAt: 16)
+    check(lease.heartbeatAge(now: 18) == 2,
+          "freshness measures sampling age instead of callback age")
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 18, sampledAt: 15.5)
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 16.9, sampledAt: 16.5)
+    check(lease.heartbeat == 16, "backwards sampling or receive clocks cannot replace newer evidence")
+    check(lease.issue(now: 16.5, hostTraced: true) == .invalidTime,
+          "a backwards current clock is reported separately")
+}
+
+do {
+    let current = UUID(), old = UUID()
+    var lease = AirRecordKeepAliveLease()
+    lease.begin(current)
+    lease.hostDebuggerReported(current)
+    lease.helperDebuggerReported(current)
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 10)
+    guard let ping = lease.beginRecheck(current, now: 20) else { fatalError("expected recheck") }
+    check(lease.pendingDeadline == 28 && lease.sentAt == 20,
+          "a recheck has a fixed eight-second deadline")
+    check(lease.beginRecheck(current, now: 21) == nil && lease.pendingDeadline == 28,
+          "repeated health ticks cannot extend an outstanding challenge")
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 21, sampledAt: 21)
+    check(lease.issue(now: 21, hostTraced: true) == .challengePending
+          && !lease.isValid(now: 21, hostTraced: true),
+          "even a positive ordinary heartbeat cannot satisfy the pending challenge")
+    check(!lease.acceptPong(old, pingID: ping, sampledAt: 22, hostAttached: true,
+                           helperTraced: true, hostTraced: true, now: 22),
+          "an old session cannot answer the current challenge")
+    check(!lease.acceptPong(current, pingID: ping + 1, sampledAt: 22, hostAttached: true,
+                           helperTraced: true, hostTraced: true, now: 22),
+          "a mismatched challenge identifier is rejected")
+    check(!lease.acceptPong(current, pingID: ping, sampledAt: 19.9, hostAttached: true,
+                           helperTraced: true, hostTraced: true, now: 22),
+          "a sample predating the ping cannot prove a fresh peer response")
+    check(!lease.acceptPong(current, pingID: ping, sampledAt: 23, hostAttached: true,
+                           helperTraced: true, hostTraced: true, now: 22),
+          "a pong with a future sample is rejected")
+    check(!lease.acceptPong(current, pingID: ping, sampledAt: 22, hostAttached: true,
+                           helperTraced: true, hostTraced: false, now: 22),
+          "a fresh pong cannot replace actual host tracing")
+    check(!lease.acceptPong(current, pingID: ping, sampledAt: 22, hostAttached: true,
+                           helperTraced: false, hostTraced: true, now: 22),
+          "a fresh pong cannot replace actual helper tracing")
+    check(!lease.acceptPong(current, pingID: ping, sampledAt: 22, hostAttached: false,
+                           helperTraced: true, hostTraced: true, now: 22),
+          "a helper without a host debugger connection cannot restore runtime")
+    check(lease.pendingID == ping && lease.pendingDeadline == 28,
+          "rejected responses neither clear nor extend the challenge")
+    check(lease.acceptPong(current, pingID: ping, sampledAt: 22.5, hostAttached: true,
+                          helperTraced: true, hostTraced: true, now: 23),
+          "a fresh matching pong restores the current two-process session")
+    check(lease.isValid(now: 23, hostTraced: true) && lease.pendingID == nil
+          && lease.pendingDeadline == nil && lease.sentAt == nil,
+          "successful recovery clears the challenge and leaves valid fresh evidence")
+    guard let next = lease.beginRecheck(current, now: 30) else { fatalError("expected next recheck") }
+    check(next != ping, "each challenge in one session uses a new identifier")
+    check(!lease.acceptPong(current, pingID: ping, sampledAt: 30, hostAttached: true,
+                           helperTraced: true, hostTraced: true, now: 30),
+          "a delayed old pong cannot satisfy a newer challenge")
+    check(!lease.recheckExpired(now: 37.99) && lease.recheckExpired(now: 38),
+          "the recovery deadline expires at its original bound")
+    check(!lease.acceptPong(current, pingID: next, sampledAt: 38, hostAttached: true,
+                           helperTraced: true, hostTraced: true, now: 38),
+          "an expired challenge cannot revive the session")
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 39, sampledAt: 39)
+    check(!lease.isValid(now: 39, hostTraced: true) && lease.pendingDeadline == 38,
+          "ordinary heartbeat after timeout still cannot revive or extend recovery")
+    lease.invalidate()
+    check(!lease.acceptPong(current, pingID: next, sampledAt: 39, hostAttached: true,
+                           helperTraced: true, hostTraced: true, now: 39),
+          "late pong after Stop cannot restore a lease")
+    check(lease.pendingID == nil && lease.pendingDeadline == nil && !lease.recheckExpired(now: 40),
+          "Stop removes all pending recovery state")
+}
+
+do {
     let nonce = String(repeating: "a", count: 64)
     let hello = AirRecordKeepAliveMessage(type: "hello", session: firstID.uuidString, nonce: nonce, helperPID: 42)
     let data = try AirRecordKeepAliveWire.encode(hello)
@@ -208,4 +318,4 @@ do {
     } catch { }
 }
 
-print("CallTapPolicy: state machine, menu, lease expiry/stale events, and bounded IPC checks passed")
+print("CallTapPolicy: state machine, menu, sampled lease freshness, bounded challenge recovery, and IPC checks passed")

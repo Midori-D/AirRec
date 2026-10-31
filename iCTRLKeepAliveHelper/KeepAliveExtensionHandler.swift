@@ -129,6 +129,20 @@ final class KeepAliveExtensionHandler: NSObject, NSExtensionRequestHandling {
                 })
             self.worker = worker
             worker.start()
+        case "ping":
+            guard state == .attached, let pingID = message.pingID, pingID > 0 else {
+                stop(errorCode: 16)
+                return
+            }
+            // This is sampled while processing the authenticated challenge,
+            // rather than reusing a queued periodic heartbeat's old evidence.
+            let hostAttached = worker?.isAttached == true
+            let traced = airrecord_process_is_traced()
+            let sampledAt = ProcessInfo.processInfo.systemUptime
+            send(self.message("pong", hostAttached: hostAttached, selfTraced: traced,
+                              pingID: pingID, sampledAt: sampledAt))
+            if !hostAttached { stop(errorCode: 10) }
+            else if mutualTraceObserved && !traced { stop(errorCode: 15) }
         case "stop":
             stop(errorCode: nil)
         default:
@@ -156,7 +170,9 @@ final class KeepAliveExtensionHandler: NSObject, NSExtensionRequestHandling {
             timer.schedule(deadline: .now(), repeating: 2, leeway: .milliseconds(100))
             timer.setEventHandler { [weak self] in
                 guard let self, self.state == .attached else { return }
+                let hostAttached = self.worker?.isAttached == true
                 let traced = airrecord_process_is_traced()
+                guard hostAttached else { self.stop(errorCode: 10); return }
                 if self.mutualTraceObserved && !traced {
                     self.stop(errorCode: 15)
                     return
@@ -166,8 +182,9 @@ final class KeepAliveExtensionHandler: NSObject, NSExtensionRequestHandling {
                     self.handshakeTimeout?.cancel()
                     self.handshakeTimeout = nil
                 }
-                self.send(self.message("heartbeat", hostAttached: true,
-                                       selfTraced: traced))
+                self.send(self.message("heartbeat", hostAttached: hostAttached,
+                                       selfTraced: traced,
+                                       sampledAt: ProcessInfo.processInfo.systemUptime))
             }
             heartbeat = timer
             timer.resume()
@@ -217,11 +234,13 @@ final class KeepAliveExtensionHandler: NSObject, NSExtensionRequestHandling {
 
     private func message(_ type: String, helperPID: UInt32? = nil,
                          allowsDebugging: Bool? = nil, hostAttached: Bool? = nil,
-                         selfTraced: Bool? = nil, errorCode: Int32? = nil) -> AirRecordKeepAliveMessage {
+                         selfTraced: Bool? = nil, errorCode: Int32? = nil,
+                         pingID: UInt64? = nil, sampledAt: TimeInterval? = nil) -> AirRecordKeepAliveMessage {
         AirRecordKeepAliveMessage(type: type, session: bootstrap?.session ?? "",
                                   nonce: bootstrap?.nonce ?? "", helperPID: helperPID,
                                   allowsDebugging: allowsDebugging, hostAttached: hostAttached,
-                                  selfTraced: selfTraced, errorCode: errorCode)
+                                  selfTraced: selfTraced, errorCode: errorCode,
+                                  pingID: pingID, sampledAt: sampledAt)
     }
 
     private func send(_ message: AirRecordKeepAliveMessage) {
