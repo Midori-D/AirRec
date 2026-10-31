@@ -17,12 +17,23 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.calltap.prototype.ictrl':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.1.4' or str(info.get('CFBundleVersion')) != '8':
+        if info.get('CFBundleShortVersionString') != '1.1.5' or str(info.get('CFBundleVersion')) != '9':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRecord':
             raise ValueError('Unexpected app display name.')
         if info.get('CallTapDirectOnly'):
             raise ValueError('Experimental direct connection marker must be absent.')
+        helper_prefix = prefix + 'PlugIns/AirRecordKeepAliveHelper.appex/'
+        helper = plistlib.loads(archive.read(helper_prefix + 'Info.plist'))
+        if helper.get('CFBundleIdentifier') != info['CFBundleIdentifier'] + '.keepalive':
+            raise ValueError('Unexpected Helper identifier.')
+        if not helper.get('AirRecordKeepAliveHelper') or helper.get('NSExtension', {}).get('NSExtensionPointIdentifier') != 'com.apple.share-services':
+            raise ValueError('Helper extension metadata missing.')
+        if helper.get('CFBundleShortVersionString') != '1.1.5' or str(helper.get('CFBundleVersion')) != '9':
+            raise ValueError('Unexpected Helper version.')
+        for metadata_info in (info, helper):
+            if metadata_info.get('UIBackgroundModes') or any(key.startswith(('NSLocation', 'NSMicrophone')) for key in metadata_info):
+                raise ValueError('Location, microphone and audio keepalive must be absent.')
         icon = info.get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {})
         if icon.get('CFBundleIconName') != 'AppIcon':
             raise ValueError('App icon catalog missing.')
@@ -61,9 +72,9 @@ def verify(path):
             if not signed:
                 raise ValueError('Unsigned embedded Mach-O: ' + PurePosixPath(name).name)
             count += 1
-        if not count or prefix+info['CFBundleExecutable'] not in names:
+        if count < 2 or prefix+info['CFBundleExecutable'] not in names or helper_prefix+helper['CFBundleExecutable'] not in names:
             raise ValueError('Main executable missing.')
-        print(f'PASS: AirRecord 1.1.4 (8), AppIcon, Shortcut metadata, {count} signed arm64 binary(s), no direct connector/XCTest/profile.')
+        print(f'PASS: AirRecord 1.1.5 (9), Helper, AppIcon, Shortcut metadata, {count} signed arm64 binary(s), no location/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])

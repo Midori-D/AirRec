@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>AirRecord KeepAlive Helper</string>
+    <key>AirRecordKeepAliveHelper</key>
+    <true/>
+    <key>AirRecordKeepAliveHelper</key>
+    <true/>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <key>NSExtensionActivationRule</key>
+            <string>FALSEPREDICATE</string>
+        </dict>
+        <key>NSExtensionContextClass</key>
+        <string>NSExtensionContext</string>
+        <key>NSExtensionContextHostClass</key>
+        <string>NSExtensionContext</string>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.share-services</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>$(PRODUCT_MODULE_NAME).KeepAliveExtensionHandler</string>
+    </dict>
+</dict>
+</plist>

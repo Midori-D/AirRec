@@ -5,6 +5,7 @@ struct CallTapMainView: View {
     @State private var showMount = false
     #if CALLTAP_RAWAX
     @StateObject private var monitor = CallTapRawAXMonitor.shared
+    @StateObject private var keepAlive = AirRecordKeepAliveController.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -32,6 +33,23 @@ struct CallTapMainView: View {
                 .disabled(monitor.isRunning || monitor.isPreparing)
                 Button("자동 시작 끄기", role: .destructive) { monitor.stop() }
                     .disabled(!monitor.isEnabled && !monitor.isPreparing)
+            }
+            Section("백그라운드 유지 · 실험") {
+                Toggle("Helper 디버거 연결 유지", isOn: Binding(
+                    get: { keepAlive.isEnabled },
+                    set: { enabled in Task { await monitor.setKeepAliveEnabled(enabled) } }
+                ))
+                .disabled(monitor.isPreparing || keepAlive.isStarting
+                          || (keepAlive.isLiveContainer && !keepAlive.isEnabled))
+                Text(keepAlive.status).font(.footnote)
+                Text("위치·마이크·무음 오디오는 사용하지 않습니다. 앱과 Helper의 개발자 연결을 유지해 장시간 대기를 시험합니다. 강제 종료·재부팅 후에는 앱을 다시 열어야 합니다.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Text(keepAlive.isLiveContainer
+                     ? "현재 LiveContainer에서는 이 Helper를 실행할 수 없습니다. SideStore 독립 설치가 필요합니다."
+                     : "SideStore에서 확장을 유지해 설치하세요. Helper에 App ID가 하나 더 필요할 수 있습니다. 자동 시작을 켜고 연결 완료까지 앱을 열어 두세요.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Text("연결 유지 표시는 실제 디버거·Helper 응답 확인 결과입니다. 장시간 대기 후 수발신과 배터리 사용은 아직 실기기 검증이 필요합니다.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             Section("단축어 자동화") {
                 if ProcessInfo.processInfo.environment["LC_HOME_PATH"] != nil {
@@ -67,7 +85,7 @@ struct CallTapMainView: View {
                 }
             }
         }
-        .navigationTitle("AirRecord 1.1.4")
+        .navigationTitle("AirRecord 1.1.5")
         .sheet(isPresented: $showMount) { DDIMountView() }
         .task { await monitor.resumeIfEnabled() }
         .onChange(of: scenePhase) { _, phase in

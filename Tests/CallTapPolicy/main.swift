@@ -1,6 +1,6 @@
 // Copyright 2026 CallTap contributors.
 // SPDX-License-Identifier: Apache-2.0
-// Run with swiftc iCTRLUITests/CallTapPolicy.swift Tests/CallTapPolicy/main.swift -o /tmp/calltap-policy-tests
+// Run with bash Tests/CallTapPolicy/run.sh.
 
 import Foundation
 
@@ -159,4 +159,53 @@ do {
           "the new session can reserve its own menu phase")
 }
 
-print("CallTapPolicy: all state-machine, menu-readiness, and call-screen checks passed")
+do {
+    var lease = AirRecordKeepAliveLease()
+    let current = UUID(), old = UUID()
+    lease.begin(current)
+    lease.hostDebuggerReported(current)
+    lease.helperDebuggerReported(current)
+    check(!lease.isValid(now: 10, hostTraced: true), "attach reports without a heartbeat never maintain runtime")
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 10)
+    check(lease.isValid(now: 16, hostTraced: true), "a fresh, traced two-process session maintains runtime")
+    check(!lease.isValid(now: 16.01, hostTraced: true), "stale helper heartbeat revokes runtime")
+    check(!lease.isValid(now: 11, hostTraced: false), "persistent JIT state cannot replace live host tracing")
+    lease.receivedHeartbeat(old, hostAttached: false, helperTraced: false, now: 11)
+    check(lease.isValid(now: 11, hostTraced: true), "an old session cannot revoke a newer lease")
+    lease.receivedHeartbeat(current, hostAttached: false, helperTraced: true, now: 12)
+    check(!lease.isValid(now: 12, hostTraced: true), "negative peer evidence revokes immediately")
+    lease.invalidate()
+    lease.receivedHeartbeat(current, hostAttached: true, helperTraced: true, now: 13)
+    check(!lease.isValid(now: 13, hostTraced: true), "late heartbeat after Stop cannot restore a lease")
+    lease.begin(old)
+    lease.hostDebuggerReported(current)
+    lease.helperDebuggerReported(current)
+    lease.receivedHeartbeat(old, hostAttached: true, helperTraced: true, now: 20)
+    check(!lease.isValid(now: 20, hostTraced: true), "old debugger completions cannot complete a new session")
+}
+
+do {
+    let nonce = String(repeating: "a", count: 64)
+    let hello = AirRecordKeepAliveMessage(type: "hello", session: firstID.uuidString, nonce: nonce, helperPID: 42)
+    let data = try AirRecordKeepAliveWire.encode(hello)
+    var buffer = Data()
+    let incomplete = try AirRecordKeepAliveWire.append(Data(data.prefix(7)), to: &buffer)
+    check(incomplete.isEmpty,
+          "a split IPC frame waits for the remaining bytes")
+    let messages = try AirRecordKeepAliveWire.append(Data(data.dropFirst(7)) + data, to: &buffer)
+    check(messages.count == 2 && messages.allSatisfy { $0.helperPID == 42 } && buffer.isEmpty,
+          "fragmented and coalesced IPC frames preserve message boundaries")
+    check(AirRecordKeepAliveWire.matchesNonce(nonce, nonce), "matching session nonce is accepted")
+    check(!AirRecordKeepAliveWire.matchesNonce(nonce, String(repeating: "b", count: 64)), "wrong nonce is rejected")
+    do {
+        _ = try AirRecordKeepAliveWire.append(Data(repeating: 65, count: AirRecordKeepAliveWire.maximumFrameBytes + 2), to: &buffer)
+        check(false, "oversized IPC data must be rejected")
+    } catch { }
+    do {
+        var invalid = Data()
+        _ = try AirRecordKeepAliveWire.append(Data("\n".utf8), to: &invalid)
+        check(false, "empty IPC frame must be rejected")
+    } catch { }
+}
+
+print("CallTapPolicy: state machine, menu, lease expiry/stale events, and bounded IPC checks passed")
