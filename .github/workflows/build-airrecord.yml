@@ -43,7 +43,7 @@ jobs:
             build/cargo-rawax
             ~/.cargo/registry
             ~/.cargo/git
-          key: rawax-${{ runner.os }}-${{ runner.arch }}-d32c8189-${{ hashFiles('Native/*.rs', 'Archive/Legacy-CallTap-iCTRL/RawAX/*keepalive.rs') }}
+          key: rawax-${{ runner.os }}-${{ runner.arch }}-d32c8189-${{ hashFiles('Native/*.rs', 'Tests/LegacySupport/Native/*keepalive.rs') }}
           restore-keys: rawax-${{ runner.os }}-${{ runner.arch }}-d32c8189-
       - name: Test protocol and build normal app
         run: bash Scripts/build-airrecord.sh
@@ -60,6 +60,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: AirRecord-iOS
-          path: release/AirRecord-unsigned.ipa
+          path: Extras/release/AirRecord-unsigned.ipa
           if-no-files-found: error
           retention-days: 7

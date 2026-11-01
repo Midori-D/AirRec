@@ -1,6 +1,6 @@
 # AirRecord attribution
 
-AirRecord is derived from iCTRL. Original licensing and third-party notices follow; the original tree is preserved in `Archive/Legacy-CallTap-iCTRL`.
+AirRecord is derived from iCTRL. Original licensing and third-party notices follow; the original tree is preserved in `Extras/Archive/Legacy-CallTap-iCTRL`.
 
 # Third-party components and licensing
 

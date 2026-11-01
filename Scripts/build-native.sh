@@ -11,8 +11,8 @@ fi
 [[ "$(git -C "$SRC" rev-parse HEAD)" == "$PIN" ]] || { echo "Unexpected idevice revision" >&2; exit 1; }
 cp "$ROOT/Native/airrecord_ax.rs" "$SRC/idevice/src/services/dvt/calltap_ax.rs"
 cp "$ROOT/Native/ffi_airrecord_ax.rs" "$SRC/ffi/src/dvt/calltap_ax.rs"
-cp "$ROOT/Archive/Legacy-CallTap-iCTRL/RawAX/calltap_keepalive.rs" "$SRC/idevice/src/services/dvt/calltap_keepalive.rs"
-cp "$ROOT/Archive/Legacy-CallTap-iCTRL/RawAX/ffi_calltap_keepalive.rs" "$SRC/ffi/src/dvt/calltap_keepalive.rs"
+cp "$ROOT/Tests/LegacySupport/Native/calltap_keepalive.rs" "$SRC/idevice/src/services/dvt/calltap_keepalive.rs"
+cp "$ROOT/Tests/LegacySupport/Native/ffi_calltap_keepalive.rs" "$SRC/ffi/src/dvt/calltap_keepalive.rs"
 python3 - "$SRC" <<'PY'
 from pathlib import Path
 import sys
@@ -31,7 +31,7 @@ PY
 mkdir -p "$SRC/idevice/src/services/dvt/calltap_ax_fixtures"
 cp "$ROOT/Native/Fixtures/"*.bplist "$SRC/idevice/src/services/dvt/calltap_ax_fixtures/"
 export CARGO_TARGET_DIR="$ROOT/build/cargo-rawax"
-# Run current AX tests and archived Helper teardown regressions before building.
+# Run current AX tests and retained Helper teardown regressions before building.
 # The legacy C ABI/module names stay stable; public source paths use AirRecord.
 cargo test --locked --manifest-path "$SRC/Cargo.toml" -p idevice --features full,aws-lc calltap_ax::tests --lib
 cargo test --locked --manifest-path "$SRC/Cargo.toml" -p idevice --features full,aws-lc calltap_keepalive::tests --lib

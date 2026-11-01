@@ -9,7 +9,7 @@ xcodebuild build -project AirRecord.xcodeproj -scheme AirRecord -configuration R
   -derivedDataPath build/airrecord-ios -destination 'generic/platform=iOS' ARCHS=arm64 \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS='AIRRECORD_AUTOMATION' \
-  MARKETING_VERSION=1.1.9 CURRENT_PROJECT_VERSION=14
+  MARKETING_VERSION=1.1.9 CURRENT_PROJECT_VERSION=15
 APP="$ROOT/build/airrecord-ios/Build/Products/Release-iphoneos/AirRecord.app"
 [[ -d "$APP" ]] || { echo "App bundle missing" >&2; exit 1; }
 # This target must remain a normal app with no XCTest dependency or test plugin.
@@ -21,7 +21,7 @@ if otool -L "$APP/AirRecord" | grep -E 'XCTest|XCUIAutomation'; then exit 1; fi
 find "$APP" -type f \( -name '*.dylib' -o -name '*.debug.dylib' \) -exec codesign --force --sign - {} \;
 codesign --force --sign - "$APP"
 codesign --verify --deep --strict "$APP"
-mkdir -p release
+mkdir -p "$ROOT/Extras/release"
 # A fresh staging directory and archive prevent an older Helper from surviving
 # a local rebuild that previously packaged an extension.
 PAYLOAD="$(mktemp -d "$ROOT/build/airrecord-payload.XXXXXX")"
@@ -29,7 +29,7 @@ PAYLOAD="$(mktemp -d "$ROOT/build/airrecord-payload.XXXXXX")"
 trap 'rm -rf -- "$PAYLOAD"' EXIT
 mkdir "$PAYLOAD/Payload"
 cp -R "$APP" "$PAYLOAD/Payload/"
-rm -f -- "$ROOT/release/AirRecord-unsigned.ipa"
-(cd "$PAYLOAD" && zip -qr "$ROOT/release/AirRecord-unsigned.ipa" Payload)
-python3 Scripts/verify-airrecord-ipa.py release/AirRecord-unsigned.ipa
-echo 'AirRecord 1.1.9 build 14 packaged; native Liquid Glass tabs, opt-in location standby, no Helper extension.'
+rm -f -- "$ROOT/Extras/release/AirRecord-unsigned.ipa"
+(cd "$PAYLOAD" && zip -qr "$ROOT/Extras/release/AirRecord-unsigned.ipa" Payload)
+python3 Scripts/verify-airrecord-ipa.py Extras/release/AirRecord-unsigned.ipa
+echo 'AirRecord 1.1.9 build 15 packaged; native Liquid Glass tabs, opt-in location standby, no Helper extension.'
