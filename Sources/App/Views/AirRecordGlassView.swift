@@ -3,7 +3,7 @@
 import SwiftUI
 
 private enum AirRecordTab: Hashable {
-    case home, settings, activity
+    case home, settings, activity, contact
 }
 
 /// Navigation stays separate from monitoring: switching tabs never changes a
@@ -27,7 +27,7 @@ struct AirRecordGlassView: View {
         let info = Bundle.main.infoDictionary ?? [:]
         let name = info["CFBundleShortVersionString"] as? String ?? "—"
         let build = info["CFBundleVersion"] as? String ?? "—"
-        return "AirRecord \(name) · 빌드 \(build)"
+        return "AirRecord \(name) 빌드 \(build)"
     }
 
     var body: some View {
@@ -40,6 +40,13 @@ struct AirRecordGlassView: View {
             }
             Tab("기록", systemImage: "clock.arrow.circlepath", value: AirRecordTab.activity) {
                 NavigationStack { activityScreen }
+            }
+            Tab("문의", systemImage: "bubble.left.and.bubble.right", value: AirRecordTab.contact) {
+                NavigationStack {
+                    AirRecordContactView(accent: accent, version: version,
+                                         diagnosticSummary: monitor.diagnosticSummary,
+                                         isSelected: selectedTab == .contact)
+                }
             }
         }
         .tint(accent)
@@ -91,7 +98,7 @@ struct AirRecordGlassView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("AirRecord")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                Text("통화 녹음, 조금 더 가볍게.")
+                Text(version)
                     .font(.subheadline).foregroundStyle(.secondary)
             }
         }
@@ -173,6 +180,7 @@ struct AirRecordGlassView: View {
         AirRecordPage(accent: accent) {
             preparationCard
             locationCard
+            indicatorCard
             systemSettingsCard
             shortcutCard
             guidanceCard
@@ -216,12 +224,38 @@ struct AirRecordGlassView: View {
             DisclosureGroup("권한과 대기 방식 알아보기") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("이 옵션과 자동 시작을 켠 뒤 ‘앱을 사용하는 동안 허용’을 선택하세요. 준비가 완료될 때까지 앱을 열어 두세요.")
-                    Text("정밀 위치와 ‘항상 허용’은 요구하지 않습니다. 통화 녹음 자체에는 위치가 필요하지 않으며, 위치 업데이트로 앱의 대기 실행을 유지합니다.")
+                    Text("기본 대기에는 정밀 위치나 ‘항상 허용’이 필요하지 않습니다. 위치 표시 최소화 옵션은 ‘항상 허용’을 별도로 사용합니다. 통화 녹음 자체에는 위치가 필요하지 않으며, 위치 업데이트로 앱의 대기 실행을 유지합니다.")
                     Text("자동 시작을 끄면 위치 업데이트도 중지합니다. 강제 종료·재부팅 후에는 앱을 다시 열어 준비하세요.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
             .font(.subheadline)
+        }
+    }
+
+    private var indicatorCard: some View {
+        AirRecordCard {
+            AirRecordHeading("위치 사용 표시", systemImage: "location", tint: accent)
+            Toggle("위치 표시 최소화(항상 허용)", isOn: Binding(
+                get: { standby.indicatorMinimizationEnabled },
+                set: { standby.setIndicatorMinimizationEnabled($0) }
+            ))
+            .font(.headline)
+            .disabled(monitor.isPreparing || standby.isLiveContainer)
+            AirRecordInfoRow("현재 위치 권한", value: standby.authorizationText)
+            Text(standby.indicatorStatusText)
+                .font(.subheadline).foregroundStyle(.secondary)
+            Text("‘항상 허용’을 받은 뒤 백그라운드 위치 표시를 줄이도록 요청합니다. ‘앱을 사용하는 동안 허용’ 상태에서는 이 옵션만으로 표시를 숨길 수 없습니다.")
+                .font(.footnote).foregroundStyle(.secondary)
+            if standby.indicatorMinimizationEnabled {
+                Button { standby.requestAlwaysAuthorization() } label: {
+                    Label("항상 허용 권한 요청", systemImage: "hand.raised")
+                }
+                .font(.subheadline.weight(.semibold))
+                .disabled(monitor.isPreparing || standby.isLiveContainer)
+            }
+            Text("권한 창이 다시 나오지 않으면 아래의 iOS 설정 열기에서 변경하세요. 장시간 대기 효과는 실기기 확인이 필요하며, iOS의 모든 위치·개인정보 표시가 사라지는 기능은 아닙니다.")
+                .font(.footnote).foregroundStyle(.secondary)
         }
     }
 
@@ -328,7 +362,7 @@ struct AirRecordGlassView: View {
     }
 }
 
-private struct AirRecordPage<Content: View>: View {
+struct AirRecordPage<Content: View>: View {
     let accent: Color
     let content: Content
 
@@ -356,7 +390,7 @@ private struct AirRecordPage<Content: View>: View {
     }
 }
 
-private struct AirRecordCard<Content: View>: View {
+struct AirRecordCard<Content: View>: View {
     let content: Content
 
     init(@ViewBuilder content: () -> Content) { self.content = content() }
@@ -375,7 +409,7 @@ private struct AirRecordCard<Content: View>: View {
     }
 }
 
-private struct AirRecordHeading: View {
+struct AirRecordHeading: View {
     let title: String
     let systemImage: String
     let tint: Color
@@ -393,7 +427,7 @@ private struct AirRecordHeading: View {
     }
 }
 
-private struct AirRecordInfoRow: View {
+struct AirRecordInfoRow: View {
     let title: String
     let value: String
 

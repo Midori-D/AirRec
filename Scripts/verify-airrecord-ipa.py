@@ -17,7 +17,7 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.calltap.prototype.ictrl':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.1.9' or str(info.get('CFBundleVersion')) != '15':
+        if info.get('CFBundleShortVersionString') != '1.2.0' or str(info.get('CFBundleVersion')) != '16':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRecord':
             raise ValueError('Unexpected app display name.')
@@ -32,9 +32,15 @@ def verify(path):
         usage = info.get('NSLocationWhenInUseUsageDescription')
         if not isinstance(usage, str) or not all(word in usage for word in ('백그라운드', '저장', '전송')):
             raise ValueError('Location standby privacy explanation missing.')
+        always = info.get('NSLocationAlwaysAndWhenInUseUsageDescription')
+        if not isinstance(always, str) or not all(word in always for word in ('항상', '백그라운드', '저장', '전송')):
+            raise ValueError('Optional Always location permission explanation missing.')
+        location_keys = {'NSLocationWhenInUseUsageDescription', 'NSLocationAlwaysAndWhenInUseUsageDescription'}
         if any(key.startswith('NSMicrophone') or
-               (key.startswith('NSLocation') and key != 'NSLocationWhenInUseUsageDescription') for key in info):
-            raise ValueError('Microphone and Always location permissions must be absent.')
+               (key.startswith('NSLocation') and key not in location_keys) for key in info):
+            raise ValueError('Unexpected microphone or extra location permission.')
+        if prefix + 'moon.gif' not in names or archive.read(prefix + 'moon.gif')[:6] not in (b'GIF87a', b'GIF89a'):
+            raise ValueError('Bundled contact GIF is missing or invalid.')
         icon = info.get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {})
         if icon.get('CFBundleIconName') != 'AppIcon':
             raise ValueError('App icon catalog missing.')
@@ -75,7 +81,7 @@ def verify(path):
             count += 1
         if count < 1 or prefix+info['CFBundleExecutable'] not in names:
             raise ValueError('Main executable missing.')
-        print(f'PASS: AirRecord 1.1.9 (15), location standby permission, AppIcon, Shortcut metadata, {count} signed arm64 binary(s), no Helper/audio/microphone/Always/direct connector/XCTest/profile.')
+        print(f'PASS: AirRecord 1.2.0 (16), location standby permission, AppIcon, Shortcut metadata, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])

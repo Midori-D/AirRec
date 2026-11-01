@@ -397,4 +397,39 @@ do {
           "Stop clears the current execution evidence")
 }
 
-print("AirRecordPolicy: call safety, lease recovery, bounded IPC, and location session lifecycle checks passed")
+do {
+    var indicator = AirRecordLocationIndicatorPolicy()
+    check(indicator.showsBackgroundLocationIndicator,
+          "the default preference never suppresses the location indicator")
+    for authorization in AirRecordLocationIndicatorPolicy.Authorization.allCases {
+        indicator.updateAuthorization(authorization)
+        check(indicator.showsBackgroundLocationIndicator,
+              "Always authorization alone cannot opt the user into minimization")
+    }
+    indicator.setMinimizationEnabled(true)
+    for authorization in AirRecordLocationIndicatorPolicy.Authorization.allCases where authorization != .always {
+        indicator.updateAuthorization(authorization)
+        check(indicator.showsBackgroundLocationIndicator,
+              "a saved minimization preference cannot hide without actual Always authorization")
+    }
+    indicator.updateAuthorization(.always)
+    check(!indicator.showsBackgroundLocationIndicator,
+          "explicit preference plus actual Always permission requests minimization")
+    indicator.updateAuthorization(.whenInUse)
+    check(indicator.showsBackgroundLocationIndicator && indicator.minimizationEnabled,
+          "revoking Always immediately restores the indicator without clearing the preference")
+    indicator.updateAuthorization(.always)
+    check(!indicator.showsBackgroundLocationIndicator,
+          "a later actual Always grant can apply the retained preference")
+    indicator.setMinimizationEnabled(false)
+    check(indicator.showsBackgroundLocationIndicator,
+          "opting out immediately restores the indicator even while Always is granted")
+    indicator.setMinimizationEnabled(true)
+    for authorization in [AirRecordLocationIndicatorPolicy.Authorization.denied, .restricted, .unknown, .notDetermined] {
+        indicator.updateAuthorization(authorization)
+        check(indicator.showsBackgroundLocationIndicator,
+              "denied, restricted, unknown, and undecided transitions fail back to a visible indicator request")
+    }
+}
+
+print("AirRecordPolicy: call safety, lease recovery, bounded IPC, location session and indicator authorization checks passed")

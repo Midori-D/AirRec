@@ -72,5 +72,7 @@
 		<string>stikjit</string>
 		<string>localdevvpn</string>
 	</array>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>사용자가 선택한 백그라운드 통화 감시와 위치 사용 표시 최소화를 위해 ‘항상 허용’ 권한을 사용합니다. 위치 좌표는 사용·저장·전송하지 않습니다.</string>
 </dict>
 </plist>

@@ -153,6 +153,8 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
                  "감시 상태: \(isRunning ? "실행 중" : "대기/중지")",
                  "장시간 대기 설정: \(standby.isEnabled ? "켜짐" : "꺼짐")",
                  "위치 대기: \(standby.status)",
+                 "위치 권한: \(standby.authorizationText)",
+                 "위치 표시: \(standby.indicatorStatusText)",
                  "백그라운드 앱 새로 고침: \(standby.backgroundRefreshStatusText)",
                  "저전력 모드: \(standby.lowPowerModeEnabled ? "켜짐" : "꺼짐")",
                  "마지막 실행 점검: \(lastStandbyCheck.map { $0.formatted(date: .omitted, time: .standard) } ?? "없음")"] + recentEvents).joined(separator: "\n")

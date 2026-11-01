@@ -62,6 +62,9 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     @Published private(set) var status = "장시간 대기가 꺼져 있습니다."
     @Published private(set) var backgroundRefreshStatusText = "확인 중"
     @Published private(set) var lowPowerModeEnabled = false
+    @Published private(set) var indicatorMinimizationEnabled: Bool
+    @Published private(set) var authorizationText = "위치 권한 확인 중"
+    @Published private(set) var indicatorStatusText = "기본 위치 표시 모드"
 
     var onStopped: ((String) -> Void)?
     var onEvent: ((String) -> Void)?
@@ -73,9 +76,22 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
 
     private let defaults: UserDefaults
     private static let enabledKey = "AirRecord.locationStandby.enabled"
+    private static let indicatorKey = "AirRecord.locationStandby.indicatorMinimizationEnabled"
     private var policy = AirRecordLocationSessionPolicy()
+    private var indicatorPolicy = AirRecordLocationIndicatorPolicy()
     private var manager: CLLocationManager?
     private var delegateProxy: AirRecordLocationDelegate?
+    // This manager only observes/requests permission. It never starts location
+    // updates, reads a sample, or owns a monitoring-session generation.
+    private lazy var permissionManager: CLLocationManager = {
+        let manager = CLLocationManager()
+        manager.showsBackgroundLocationIndicator = true
+        manager.delegate = self
+        return manager
+    }()
+    private var permissionWhenInUseRequestSent = false
+    private var alwaysRequestAttempted = false
+    private var authorizationHint: String?
     private var updatesStarted = false
     private var authorizationRequested = false
     private var startupDeadline: TimeInterval = 0
@@ -84,7 +100,9 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         isEnabled = defaults.bool(forKey: Self.enabledKey)
+        indicatorMinimizationEnabled = defaults.bool(forKey: Self.indicatorKey)
         super.init()
+        indicatorPolicy.setMinimizationEnabled(indicatorMinimizationEnabled)
         refreshEnvironment()
         if isEnabled { status = "장시간 대기 설정이 유지되어 있습니다. 앱에서 준비해 주세요." }
     }
@@ -99,6 +117,88 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
             status = "장시간 대기가 꺼져 있습니다."
         } else if !isRunning {
             status = "위치 서비스로 장시간 대기를 준비합니다. 위치 좌표는 사용·저장·전송하지 않습니다."
+        }
+    }
+
+    /// Changing this preference only updates the current manager's presentation
+    /// request; it never restarts location, monitoring, or a call reservation.
+    func setIndicatorMinimizationEnabled(_ enabled: Bool) {
+        indicatorMinimizationEnabled = enabled
+        defaults.set(enabled, forKey: Self.indicatorKey)
+        indicatorPolicy.setMinimizationEnabled(enabled)
+        refreshAuthorizationPresentation()
+        onEvent?(enabled
+                 ? "위치 표시 최소화를 선택했습니다. 실제 ‘항상 허용’ 권한이 확인될 때만 끄기를 요청합니다."
+                 : "위치 표시를 기본 모드로 되돌렸습니다.")
+    }
+
+    /// Called only by an explicit foreground button. Authorization callbacks,
+    /// launch/resume, and the runtime preparation loop never call this method.
+    func requestAlwaysAuthorization() {
+        guard UIApplication.shared.applicationState == .active else {
+            authorizationHint = "추가 권한은 AirRecord 화면을 연 상태에서 버튼을 눌러 요청하세요."
+            refreshAuthorizationPresentation()
+            return
+        }
+        guard !isLiveContainer else {
+            authorizationHint = "추가 권한은 SideStore에 독립 설치한 AirRecord에서 요청하세요."
+            refreshAuthorizationPresentation()
+            return
+        }
+        let current = permissionManager.authorizationStatus
+        switch current {
+        case .notDetermined:
+            let purpose = Bundle.main.object(forInfoDictionaryKey: "NSLocationWhenInUseUsageDescription") as? String ?? ""
+            guard !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                authorizationHint = "이 설치에는 기본 위치 권한 설명이 없습니다. 새 IPA를 설치하세요."
+                refreshAuthorizationPresentation()
+                return
+            }
+            authorizationHint = "먼저 ‘앱을 사용하는 동안 허용’을 선택하세요. 이후 추가 권한 버튼을 다시 누르거나 iOS 설정에서 확인하세요."
+            guard !permissionWhenInUseRequestSent, !authorizationRequested else {
+                refreshAuthorizationPresentation()
+                return
+            }
+            permissionWhenInUseRequestSent = true
+            refreshAuthorizationPresentation()
+            permissionManager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse:
+            let purpose = Bundle.main.object(forInfoDictionaryKey: "NSLocationAlwaysAndWhenInUseUsageDescription") as? String ?? ""
+            guard !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                authorizationHint = "이 설치에는 추가 위치 권한 설명이 없습니다. 새 IPA를 설치하세요."
+                refreshAuthorizationPresentation()
+                return
+            }
+            guard !alwaysRequestAttempted else {
+                authorizationHint = "추가 권한을 이미 요청했습니다. 창이 나타나지 않거나 ‘한 번 허용’을 선택했다면 iOS 설정에서 현재 권한을 확인하세요."
+                refreshAuthorizationPresentation()
+                return
+            }
+            alwaysRequestAttempted = true
+            authorizationHint = "추가 권한 요청을 보냈습니다. iOS가 창을 표시하지 않을 수 있으며, 현재 권한이 유지되면 iOS 설정에서 확인하세요."
+            refreshAuthorizationPresentation()
+            permissionManager.requestAlwaysAuthorization()
+        case .authorizedAlways:
+            authorizationHint = nil
+            refreshAuthorizationPresentation()
+        case .denied, .restricted:
+            authorizationHint = "iOS 설정에서 위치 권한을 확인하세요. 앱에서 추가 권한 창을 다시 열 수 없는 상태입니다."
+            refreshAuthorizationPresentation()
+        @unknown default:
+            authorizationHint = "현재 권한을 확인할 수 없습니다. iOS 설정에서 확인하세요."
+            refreshAuthorizationPresentation()
+        }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        // Ignore the delivered manager's cached argument. Read current status on
+        // the main actor, and never create or revive a runtime session here.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.refreshAuthorizationPresentation()
+            if let id = self.policy.session {
+                self.authorizationChanged(for: id)
+            }
         }
     }
 
@@ -183,6 +283,9 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
 
     private func authorizationChanged(for id: UUID) {
         guard isEnabled, policy.matches(id), let manager else { return }
+        // Apply immediately even to an already-started session: revoking Always
+        // must restore the indicator before the updatesStarted early return.
+        refreshAuthorizationPresentation()
         switch manager.authorizationStatus {
         case .notDetermined:
             guard UIApplication.shared.applicationState != .background else {
@@ -194,7 +297,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
                 return
             }
             status = "장시간 대기에 위치 서비스를 사용합니다. ‘앱을 사용하는 동안 허용’을 선택해 주세요. 정밀 위치는 필요하지 않습니다."
-            guard !authorizationRequested else { return }
+            guard !authorizationRequested, !permissionWhenInUseRequestSent else { return }
             authorizationRequested = true
             manager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
@@ -219,6 +322,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
 
     private func receivedSample(for id: UUID, timestamp: Date?) {
         guard isEnabled, updatesStarted, policy.matches(id), let timestamp, let manager else { return }
+        refreshAuthorizationPresentation()
         guard manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways else {
             authorizationChanged(for: id)
             return
@@ -255,12 +359,44 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     }
 
     func refreshEnvironment() {
+        refreshAuthorizationPresentation()
         lowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
         switch UIApplication.shared.backgroundRefreshStatus {
         case .available: backgroundRefreshStatusText = "사용 가능"
         case .denied: backgroundRefreshStatusText = "꺼짐 또는 저전력 모드로 제한됨"
         case .restricted: backgroundRefreshStatusText = "시스템에서 제한됨"
         @unknown default: backgroundRefreshStatusText = "상태를 확인할 수 없음"
+        }
+    }
+
+    private func refreshAuthorizationPresentation() {
+        // Query a retained manager now rather than trusting an authorization
+        // value captured in a queued callback from an earlier session.
+        let current = (manager ?? permissionManager).authorizationStatus
+        if current != .notDetermined { permissionWhenInUseRequestSent = false }
+        let authorization: AirRecordLocationIndicatorPolicy.Authorization
+        let label: String
+        switch current {
+        case .notDetermined: authorization = .notDetermined; label = "위치 권한: 아직 선택하지 않음"
+        case .authorizedWhenInUse: authorization = .whenInUse; label = "위치 권한: 앱을 사용하는 동안 허용"
+        case .authorizedAlways: authorization = .always; label = "위치 권한: 항상 허용"
+        case .denied: authorization = .denied; label = "위치 권한: 허용 안 됨"
+        case .restricted: authorization = .restricted; label = "위치 권한: 시스템에서 제한됨"
+        @unknown default: authorization = .unknown; label = "위치 권한: 확인할 수 없음"
+        }
+        if current == .authorizedAlways { authorizationHint = nil }
+        indicatorPolicy.updateAuthorization(authorization)
+        let showsIndicator = indicatorPolicy.showsBackgroundLocationIndicator
+        manager?.showsBackgroundLocationIndicator = showsIndicator
+        authorizationText = label + (authorizationHint.map { " · " + $0 } ?? "")
+        if !indicatorMinimizationEnabled {
+            indicatorStatusText = "기본 위치 표시 모드 · 위치 사용 표시는 iOS가 관리합니다."
+        } else if !showsIndicator {
+            indicatorStatusText = manager == nil
+                ? "최소화 설정 저장됨 · 위치 세션 시작 시 표시 끄기를 요청합니다."
+                : "위치 표시 끄기 요청 · 실제 표시와 장시간 유지는 실기기 확인이 필요합니다."
+        } else {
+            indicatorStatusText = "위치 표시 유지 · 실제 ‘항상 허용’ 권한이 확인되기 전에는 끄지 않습니다."
         }
     }
 
@@ -296,6 +432,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         manager?.delegate = nil
         manager = nil
         delegateProxy = nil
+        refreshAuthorizationPresentation()
     }
 }
 #endif
