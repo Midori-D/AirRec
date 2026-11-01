@@ -116,7 +116,7 @@ struct AirRecordGlassView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(monitoringTitle)
                         .font(.title2.weight(.bold))
-                    Text(monitor.isRunning ? "통화 녹음 시작을 준비합니다." : "활성화하면 통화 연결을 확인합니다.")
+                    Text(monitor.isRunning ? "AirRecord 일하는 중 🧐" : "AirRecord 쉬는 중 😴")
                         .font(.caption.weight(.medium)).foregroundStyle(.secondary)
                 }
             }
@@ -132,7 +132,7 @@ struct AirRecordGlassView: View {
     private var monitoringTitle: String {
         if monitor.isPreparing { return "AirRecord 연결 중" }
         if monitor.isRunning { return "AirRecord 활성화됨" }
-        return monitor.isEnabled ? "연결 필요" : "AirRecord 비활성화 됨"
+        return monitor.isEnabled ? "연결 필요" : "AirRecord 비활성화됨"
     }
 
     @ViewBuilder
