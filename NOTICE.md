@@ -1,3 +1,7 @@
+# AirRecord attribution
+
+AirRecord is derived from iCTRL. Original licensing and third-party notices follow; the original tree is preserved in `Archive/Legacy-CallTap-iCTRL`.
+
 # Third-party components and licensing
 
 iCTRL is licensed under the **Apache License, Version 2.0** (see `LICENSE`).
@@ -12,7 +16,7 @@ under the AGPL remain available under the AGPL; new versions are Apache-2.0.
 
 | Component | Upstream | License | Used for |
 |---|---|---|---|
-| `idevice` | [jkcoxson/idevice](https://github.com/jkcoxson/idevice) | MIT | RSD tunnel, lockdownd, image mounter — all of `iCTRLApp/DDI`'s protocol work |
+| `idevice` | [jkcoxson/idevice](https://github.com/jkcoxson/idevice) | MIT | RSD tunnel, lockdownd, image mounter — all of `Sources/App/DDI`'s protocol work |
 | StikDebug | [StikDebug/StikDebug](https://github.com/StikDebug/StikDebug) | AGPL-3.0 | **Idea only, no code copied.** On-device DDI mounting without a privileged entitlement is StikDebug's idea. `DDIMounter.swift` is an independent implementation against the `idevice` API, whose calls any client must make in this order. |
 | StosVPN / LocalDevVPN | [SideStore/StosVPN](https://github.com/SideStore/StosVPN), [jkcoxson/LocalDevVPN](https://github.com/jkcoxson/LocalDevVPN) | NOASSERTION | Invoked as a separate app (URL scheme), not vendored. Provides the `10.7.0.1` reflector that lets iCTRL reach this device's own lockdownd. |
 | DeveloperDiskImage mirror | [doronz88/DeveloperDiskImage](https://github.com/doronz88/DeveloperDiskImage) | See upstream | Downloaded at runtime, not redistributed: `BuildManifest.plist`, `Image.dmg`, `Image.dmg.trustcache`. Users may supply their own copy from Xcode instead. |
