@@ -258,6 +258,13 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
         isPreparing = true
         let request = UUID()
         preparationID = request
+        defer {
+            // A canceled foreground task must release preparation and location
+            // support, without allowing an old task to stop a newer request.
+            if preparationID == request && isPreparing && Task.isCancelled {
+                pause(message: "통화 감시 준비를 취소했습니다. 자동 시작 설정은 유지됩니다.")
+            }
+        }
         setStatus("페어링 파일과 기기 연결을 확인하고 있습니다.")
         guard PairingFileStore.exists else {
             isPreparing = false
