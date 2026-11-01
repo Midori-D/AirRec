@@ -27,7 +27,7 @@ struct AirRecordGlassView: View {
         let info = Bundle.main.infoDictionary ?? [:]
         let name = info["CFBundleShortVersionString"] as? String ?? "—"
         let build = info["CFBundleVersion"] as? String ?? "—"
-        return "AirRecord \(name) 빌드 \(build)"
+        return "Ver \(name) 빌드 \(build)"
     }
 
     var body: some View {
@@ -114,24 +114,38 @@ struct AirRecordGlassView: View {
                     .foregroundStyle(monitor.isRunning ? Color.green : accent)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(monitor.isPreparing ? "연결 준비 중" : (monitor.isRunning ? "자동 녹음 대기" : "자동 시작을 준비하세요"))
+                    Text(monitoringTitle)
                         .font(.title2.weight(.bold))
-                    Text(monitor.isEnabled ? "자동 시작 설정 켜짐" : "자동 시작 설정 꺼짐")
+                    Text(monitor.isRunning ? "통화 녹음 시작을 준비합니다." : "활성화하면 통화 연결을 확인합니다.")
                         .font(.caption.weight(.medium)).foregroundStyle(.secondary)
                 }
             }
-            Text(monitor.status)
-                .font(.subheadline).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if monitor.isPreparing || (monitor.isEnabled && !monitor.isRunning) {
+                Text(monitor.status)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                DisclosureGroup("연결 상세") {
+                    Text(monitor.status)
+                        .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+                }
+                .font(.subheadline)
+            }
             monitoringControls
         }
+    }
+
+    private var monitoringTitle: String {
+        if monitor.isPreparing { return "AirRecord 연결 중" }
+        if monitor.isRunning { return "AirRecord 활성화됨" }
+        return monitor.isEnabled ? "연결 필요" : "AirRecord 비활성화"
     }
 
     @ViewBuilder
     private var monitoringControls: some View {
         if monitor.isRunning {
             Button(role: .destructive) { monitor.stop() } label: {
-                Label("자동 시작 끄기", systemImage: "pause.fill")
+                Label("AirRecord 비활성화", systemImage: "pause.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered).controlSize(.large)
@@ -139,7 +153,7 @@ struct AirRecordGlassView: View {
             Button { Task { await monitor.start() } } label: {
                 HStack(spacing: 8) {
                     if monitor.isPreparing { ProgressView().controlSize(.small) }
-                    Text(monitor.isPreparing ? "준비 중…" : (monitor.isEnabled ? "연결 다시 확인" : "자동 시작 켜기"))
+                    Text(monitor.isPreparing ? "연결 중…" : "AirRecord 활성화")
                         .fontWeight(.semibold)
                     if !monitor.isPreparing { Image(systemName: "arrow.right") }
                 }
@@ -148,7 +162,7 @@ struct AirRecordGlassView: View {
             .buttonStyle(.borderedProminent).controlSize(.large)
             .disabled(monitor.isPreparing)
             if monitor.isEnabled || monitor.isPreparing {
-                Button("자동 시작 끄기", role: .destructive) { monitor.stop() }
+                Button("AirRecord 비활성화", role: .destructive) { monitor.stop() }
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -157,30 +171,42 @@ struct AirRecordGlassView: View {
 
     private var standbySummary: some View {
         AirRecordCard {
-            AirRecordHeading("백그라운드 대기", systemImage: "location.circle", tint: accent)
+            AirRecordHeading("백그라운드 AirRecord", systemImage: "location.circle", tint: accent)
             HStack(alignment: .firstTextBaseline) {
-                Text(standby.isRunning ? "장시간 대기 준비됨" : (standby.isEnabled ? "장시간 대기 재개 필요" : "장시간 대기 꺼짐"))
+                Text(backgroundTitle)
                     .font(.headline)
                 Spacer(minLength: 8)
-                Image(systemName: standby.isRunning ? "checkmark.circle.fill" : "circle.dashed")
-                    .foregroundStyle(standby.isRunning ? Color.green : Color.secondary)
+                Image(systemName: standby.isRunning && monitor.isRunning ? "checkmark.circle.fill" : "circle.dashed")
+                    .foregroundStyle(standby.isRunning && monitor.isRunning ? Color.green : Color.secondary)
                     .accessibilityHidden(true)
             }
-            Text(standby.isRunning ? "위치 세션으로 대기 중입니다. 실행 상태는 기록 탭에서 확인할 수 있습니다."
-                 : "위치 서비스를 이용한 대기는 설정에서 켤 수 있습니다.")
+            Text(backgroundSummary)
                 .font(.subheadline).foregroundStyle(.secondary)
             Button { selectedTab = .settings } label: {
-                Label("대기 설정 보기", systemImage: "arrow.up.right")
+                Label("백그라운드 설정 보기", systemImage: "arrow.up.right")
             }
             .font(.subheadline.weight(.semibold))
         }
     }
 
+    private var backgroundTitle: String {
+        if standby.isRunning && monitor.isRunning { return "백그라운드 활성화됨" }
+        if !standby.isEnabled { return "백그라운드 비활성화" }
+        if monitor.isPreparing { return "백그라운드 준비 중" }
+        return monitor.isEnabled ? "백그라운드 연결 필요" : "백그라운드 설정 켜짐"
+    }
+
+    private var backgroundSummary: String {
+        if !standby.isEnabled { return "설정에서 백그라운드 AirRecord를 켤 수 있습니다." }
+        if !monitor.isEnabled { return "홈에서 AirRecord를 활성화하면 적용됩니다." }
+        if standby.isRunning && monitor.isRunning { return "백그라운드에서 통화 연결을 확인합니다." }
+        return "AirRecord 연결 상태를 확인해 주세요. 자세한 내용은 기록 탭에서 볼 수 있습니다."
+    }
+
     private var settingsScreen: some View {
         AirRecordPage(accent: accent) {
             preparationCard
-            locationCard
-            indicatorCard
+            backgroundCard
             systemSettingsCard
             shortcutCard
             guidanceCard
@@ -195,7 +221,7 @@ struct AirRecordGlassView: View {
     private var preparationCard: some View {
         AirRecordCard {
             AirRecordHeading("실행 준비", systemImage: "checklist", tint: accent)
-            Text("LocalDevVPN 연결과 개발자 디스크 준비를 마친 뒤 자동 시작을 켜세요.")
+            Text("LocalDevVPN 연결과 개발자 디스크 준비를 마친 뒤 AirRecord를 활성화하세요.")
                 .font(.subheadline).foregroundStyle(.secondary)
             Button { showMount = true } label: {
                 Label("페어링 파일 · 개발자 디스크", systemImage: "externaldrive")
@@ -205,76 +231,105 @@ struct AirRecordGlassView: View {
         }
     }
 
-    private var locationCard: some View {
+    private var backgroundCard: some View {
         AirRecordCard {
-            AirRecordHeading("장시간 대기", systemImage: "location.circle", tint: accent)
-            Toggle("위치 서비스로 장시간 대기", isOn: Binding(
+            Toggle("백그라운드 AirRecord 활성화", isOn: Binding(
                 get: { standby.isEnabled },
                 set: { enabled in Task { await monitor.setLocationStandbyEnabled(enabled) } }
             ))
             .font(.headline)
             .disabled(monitor.isPreparing || (standby.isLiveContainer && !standby.isEnabled))
-            Text(standby.status).font(.subheadline).foregroundStyle(.secondary)
-            Text("좌표는 사용·저장·전송하지 않습니다. 위치 사용 표시와 배터리 소모가 생길 수 있습니다.")
+            Text("백그라운드에서도 AirRecord를 유지하기 위해 위치 권한을 사용합니다. 좌표는 저장·전송하지 않습니다.")
                 .font(.footnote).foregroundStyle(.secondary)
             if standby.isLiveContainer {
-                Label("장시간 대기는 SideStore에 독립 설치한 앱에서 사용하세요.", systemImage: "info.circle")
+                Label("백그라운드 기능은 SideStore에 독립 설치한 앱에서 사용하세요.", systemImage: "info.circle")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            DisclosureGroup("권한과 대기 방식 알아보기") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("이 옵션과 자동 시작을 켠 뒤 ‘앱을 사용하는 동안 허용’을 선택하세요. 준비가 완료될 때까지 앱을 열어 두세요.")
-                    Text("기본 대기에는 정밀 위치나 ‘항상 허용’이 필요하지 않습니다. 위치 표시 최소화 옵션은 ‘항상 허용’을 별도로 사용합니다. 통화 녹음 자체에는 위치가 필요하지 않으며, 위치 업데이트로 앱의 대기 실행을 유지합니다.")
-                    Text("자동 시작을 끄면 위치 업데이트도 중지합니다. 강제 종료·재부팅 후에는 앱을 다시 열어 준비하세요.")
+            if standby.isEnabled {
+                if !monitor.isEnabled {
+                    Label("홈에서 AirRecord를 활성화하면 적용됩니다.", systemImage: "info.circle")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+                Divider()
+                Toggle("파란 위치 표시 줄이기", isOn: Binding(
+                    get: { standby.indicatorMinimizationEnabled },
+                    set: { standby.setIndicatorMinimizationEnabled($0) }
+                ))
+                .font(.subheadline)
+                .disabled(monitor.isPreparing || standby.isLiveContainer)
+                if standby.indicatorMinimizationEnabled {
+                    indicatorPermissionControls
+                }
             }
-            .font(.subheadline)
+            backgroundDetails
         }
     }
 
-    private var indicatorCard: some View {
-        AirRecordCard {
-            AirRecordHeading("위치 사용 표시", systemImage: "location", tint: accent)
-            Toggle("위치 표시 최소화(항상 허용)", isOn: Binding(
-                get: { standby.indicatorMinimizationEnabled },
-                set: { standby.setIndicatorMinimizationEnabled($0) }
-            ))
-            .font(.headline)
-            .disabled(monitor.isPreparing || standby.isLiveContainer)
-            AirRecordInfoRow("현재 위치 권한", value: standby.authorizationText)
-            Text(standby.indicatorStatusText)
-                .font(.subheadline).foregroundStyle(.secondary)
-            Text("‘항상 허용’을 받은 뒤 백그라운드 위치 표시를 줄이도록 요청합니다. ‘앱을 사용하는 동안 허용’ 상태에서는 이 옵션만으로 표시를 숨길 수 없습니다.")
+    @ViewBuilder
+    private var indicatorPermissionControls: some View {
+        if standby.hasAlwaysAuthorization {
+            Label("항상 허용 확인됨", systemImage: "checkmark.circle.fill")
+                .font(.footnote.weight(.medium)).foregroundStyle(.green)
+        } else {
+            Text("파란 표시를 줄이려면 위치 권한을 ‘항상 허용’으로 설정해야 합니다.")
                 .font(.footnote).foregroundStyle(.secondary)
-            if standby.indicatorMinimizationEnabled {
-                Button { standby.requestAlwaysAuthorization() } label: {
-                    Label("항상 허용 권한 요청", systemImage: "hand.raised")
-                }
-                .font(.subheadline.weight(.semibold))
-                .disabled(monitor.isPreparing || standby.isLiveContainer)
+            Button { standby.requestAlwaysAuthorization() } label: {
+                Label("항상 허용 요청", systemImage: "hand.raised")
             }
-            Text("권한 창이 다시 나오지 않으면 아래의 iOS 설정 열기에서 변경하세요. 장시간 대기 효과는 실기기 확인이 필요하며, iOS의 모든 위치·개인정보 표시가 사라지는 기능은 아닙니다.")
+            .font(.subheadline.weight(.semibold))
+            .disabled(monitor.isPreparing || standby.isLiveContainer)
+            Text("권한 창이 나타나지 않으면 iOS 설정에서 변경해 주세요.")
                 .font(.footnote).foregroundStyle(.secondary)
         }
+        Button { openAppSettings() } label: {
+            Label("위치 권한 설정 열기", systemImage: "arrow.up.forward.app")
+        }
+        .font(.subheadline.weight(.semibold))
+    }
+
+    private var backgroundDetails: some View {
+        DisclosureGroup("권한 및 상세 안내") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(standby.status)
+                AirRecordInfoRow("현재 위치 권한", value: standby.authorizationText)
+                Text(standby.indicatorStatusText)
+                if !standby.isEnabled {
+                    Text("백그라운드 기능을 켜기 전에 위치 권한을 준비할 수 있습니다.")
+                    indicatorPermissionControls
+                }
+                Text("백그라운드 설정과 AirRecord를 활성화한 뒤 ‘앱을 사용하는 동안 허용’을 선택하세요. 연결이 완료될 때까지 앱을 열어 두세요. 기본 기능에는 정밀 위치나 ‘항상 허용’이 필요하지 않습니다.")
+                Text("파란 위치 표시 줄이기는 실제 ‘항상 허용’ 권한을 받은 뒤 적용됩니다. iOS의 모든 위치·개인정보 표시를 없애는 기능은 아닙니다.")
+                Text("위치 사용 표시와 배터리 소모가 생길 수 있습니다. AirRecord를 비활성화하면 위치 업데이트도 중지합니다. 강제 종료·재부팅 후에는 앱을 다시 열어 활성화하세요.")
+                Text("파란 표시를 줄인 상태의 장시간 백그라운드 유지는 실기기 확인이 필요합니다.")
+            }
+            .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+        }
+        .font(.subheadline)
     }
 
     private var systemSettingsCard: some View {
         AirRecordCard {
-            AirRecordHeading("iOS 백그라운드 설정", systemImage: "gearshape", tint: accent)
-            AirRecordInfoRow("앱 새로 고침", value: standby.backgroundRefreshStatusText)
-            Divider()
-            AirRecordInfoRow("저전력 모드", value: standby.lowPowerModeEnabled ? "켜짐" : "꺼짐")
-            Text("현재 앱은 주기 새로 고침을 사용하지 않습니다. 장시간 대기는 위치 세션으로 유지합니다. 새로 고침을 켜는 것만으로 지속 실행이나 통화 수신 시 실행을 보장하지 않습니다.")
-                .font(.footnote).foregroundStyle(.secondary)
-            Button {
-                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                UIApplication.shared.open(url)
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 12) {
+                    AirRecordInfoRow("앱 새로 고침", value: standby.backgroundRefreshStatusText)
+                    AirRecordInfoRow("저전력 모드", value: standby.lowPowerModeEnabled ? "켜짐" : "꺼짐")
+                    Text("현재 앱은 주기 새로 고침을 사용하지 않습니다. 백그라운드 실행에는 위치 세션을 사용합니다. 새로 고침을 켜는 것만으로 지속 실행이나 통화 수신 시 실행을 보장하지 않습니다.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
             } label: {
+                AirRecordHeading("iOS 백그라운드 정보", systemImage: "gearshape", tint: accent)
+            }
+            Button { openAppSettings() } label: {
                 Label("AirRecord의 iOS 설정 열기", systemImage: "arrow.up.forward.app")
             }
             .font(.subheadline.weight(.semibold))
         }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     private var shortcutCard: some View {
@@ -304,7 +359,7 @@ struct AirRecordGlassView: View {
             DisclosureGroup("첫 통화와 실행 유지") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("잠금을 해제한 기본 통화 화면에서 먼저 확인하세요. 녹음 요청 후 실제 녹음 타이머와 저장 결과를 확인해 주세요.")
-                    Text("자동 시작 설정은 직접 끌 때까지 유지됩니다. iOS가 실행을 중단하면 감시는 일시 정지되며, 앱에 돌아오면 연결을 확인하고 재개합니다. 무제한 실행을 보장하지 않습니다.")
+                    Text("AirRecord 설정은 저장됩니다. iOS가 실행을 중단하면 감시는 일시 정지되며, 앱에 돌아오면 연결을 확인하고 재개합니다. 무제한 실행을 보장하지 않습니다.")
                     Text("LocalDevVPN은 실행 중에도 연결되어 있어야 합니다. 강제 종료·재부팅 후에는 앱을 다시 열어 준비하세요.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
@@ -326,7 +381,7 @@ struct AirRecordGlassView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
                 if monitor.recentEvents.isEmpty {
                     ContentUnavailableView("아직 기록이 없습니다", systemImage: "clock",
-                                           description: Text("자동 시작을 준비하면 실행 상태가 여기에 표시됩니다."))
+                                           description: Text("AirRecord를 활성화하면 실행 상태가 여기에 표시됩니다."))
                 } else {
                     ForEach(Array(monitor.recentEvents.enumerated().reversed()), id: \.offset) { entry in
                         HStack(alignment: .top, spacing: 12) {

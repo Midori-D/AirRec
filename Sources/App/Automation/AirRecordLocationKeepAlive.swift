@@ -66,6 +66,8 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     @Published private(set) var authorizationText = "위치 권한 확인 중"
     @Published private(set) var indicatorStatusText = "기본 위치 표시 모드"
 
+    var hasAlwaysAuthorization: Bool { indicatorPolicy.authorization == .always }
+
     var onStopped: ((String) -> Void)?
     var onEvent: ((String) -> Void)?
     var onReady: (() -> Void)?
