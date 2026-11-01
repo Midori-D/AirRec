@@ -5,7 +5,7 @@ struct CallTapMainView: View {
     @State private var showMount = false
     #if CALLTAP_RAWAX
     @StateObject private var monitor = CallTapRawAXMonitor.shared
-    @StateObject private var keepAlive = AirRecordKeepAliveController.shared
+    @StateObject private var standby = AirRecordLocationKeepAlive.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -34,21 +34,32 @@ struct CallTapMainView: View {
                 Button("자동 시작 끄기", role: .destructive) { monitor.stop() }
                     .disabled(!monitor.isEnabled && !monitor.isPreparing)
             }
-            Section("백그라운드 유지 · 실험") {
-                Toggle("Helper 디버거 연결 유지", isOn: Binding(
-                    get: { keepAlive.isEnabled },
-                    set: { enabled in Task { await monitor.setKeepAliveEnabled(enabled) } }
+            Section("장시간 백그라운드 대기") {
+                Toggle("위치 서비스로 장시간 대기", isOn: Binding(
+                    get: { standby.isEnabled },
+                    set: { enabled in Task { await monitor.setLocationStandbyEnabled(enabled) } }
                 ))
-                .disabled(monitor.isPreparing || keepAlive.isStarting
-                          || (keepAlive.isLiveContainer && !keepAlive.isEnabled))
-                Text(keepAlive.status).font(.footnote)
-                Text("위치·마이크·무음 오디오는 사용하지 않습니다. 앱과 Helper의 개발자 연결을 유지해 장시간 대기를 시험합니다. 강제 종료·재부팅 후에는 앱을 다시 열어야 합니다.")
+                .disabled(monitor.isPreparing || (standby.isLiveContainer && !standby.isEnabled))
+                Text(standby.status).font(.footnote)
+                Text("통화 감시를 오래 유지하기 위해 위치 업데이트를 켜 둡니다. 좌표는 사용·저장·전송하지 않습니다. 위치 사용 표시와 배터리 소모가 생길 수 있습니다.")
                     .font(.footnote).foregroundStyle(.secondary)
-                Text(keepAlive.isLiveContainer
-                     ? "현재 LiveContainer에서는 이 Helper를 실행할 수 없습니다. SideStore 독립 설치가 필요합니다."
-                     : "SideStore에서 확장을 유지해 설치하세요. Helper에 App ID가 하나 더 필요할 수 있습니다. 자동 시작을 켜고 연결 완료까지 앱을 열어 두세요.")
+                Text(standby.isLiveContainer
+                     ? "장시간 대기는 SideStore 독립 설치에서 사용하세요. 현재 LiveContainer 내부 실행은 지원하지 않습니다."
+                     : "이 옵션과 자동 시작을 켜고 ‘앱을 사용하는 동안 허용’을 선택하세요. 장시간 대기 준비가 완료될 때까지 앱을 열어 두세요.")
                     .font(.footnote).foregroundStyle(.secondary)
-                Text("연결 유지 표시는 실제 디버거·Helper 응답 확인 결과입니다. 장시간 대기 후 수발신과 배터리 사용은 아직 실기기 검증이 필요합니다.")
+                Text("정밀 위치나 ‘항상 허용’은 요구하지 않습니다. 자동 시작을 끄면 위치 업데이트도 중지합니다. 강제 종료·재부팅 후에는 앱을 다시 열어 준비하세요.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if standby.isEnabled {
+                    Button("iOS 위치 권한 설정 열기") {
+                        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                        UIApplication.shared.open(url)
+                    }
+                }
+            }
+            Section("iOS 백그라운드 설정") {
+                Text("백그라운드 앱 새로 고침: \(standby.backgroundRefreshStatusText)")
+                Text("저전력 모드: \(standby.lowPowerModeEnabled ? "켜짐" : "꺼짐")")
+                Text("‘설정 > 일반 > 백그라운드 앱 새로 고침’에서 확인할 수 있습니다. 새로 고침을 켜도 통화 감시를 계속 실행하거나 전화가 올 때 즉시 깨우는 기능은 제공되지 않습니다. 장시간 대기는 위의 위치 세션을 사용합니다.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("단축어 자동화") {
@@ -59,7 +70,7 @@ struct CallTapMainView: View {
                 }
                 Text("SideStore 독립 설치 후, 단축어의 ‘전화 앱이 열릴 때’ 자동화에서 ‘VPN 연결’ 다음에 AirRecord의 ‘통화 감시 재개’를 추가하세요.")
                     .font(.footnote)
-                Text("앱에서 자동 시작을 한 번 켜 두어야 합니다. 이 동작은 짧은 감시 시간을 다시 준비하며, 전화 수신 자체를 감지하는 자동화는 아닙니다. LiveContainer 내부 설치에서는 단축어 동작이 등록되지 않을 수 있습니다.")
+                Text("위치 대기는 앱에서 먼저 준비해야 합니다. 단축어는 준비된 위치 세션을 유지하면서 감시를 재개할 수 있습니다. 위치 대기가 꺼져 있으면 짧은 감시 시간만 다시 준비합니다. 전화 수신 자체를 감지하는 자동화는 아닙니다.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Text("‘통화 감시 재개’ 완료는 녹음 시작 확인이 아닙니다. 이 동작 바로 다음이나 ‘전화 앱이 닫힐 때’에 VPN 끄기를 붙이지 마세요.")
@@ -85,7 +96,7 @@ struct CallTapMainView: View {
                 }
             }
         }
-        .navigationTitle("AirRecord 1.1.6")
+        .navigationTitle("AirRecord 1.1.7")
         .sheet(isPresented: $showMount) { DDIMountView() }
         .task { await monitor.resumeIfEnabled() }
         .onChange(of: scenePhase) { _, phase in
@@ -93,6 +104,12 @@ struct CallTapMainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await monitor.resumeIfEnabled() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.backgroundRefreshStatusDidChangeNotification)) { _ in
+            standby.refreshEnvironment()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            standby.refreshEnvironment()
         }
     }
     #else

@@ -151,15 +151,20 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         return (["AirRecord \(version)", "자동 시작 설정: \(isEnabled ? "켜짐" : "꺼짐")",
                  "감시 상태: \(isRunning ? "실행 중" : "대기/중지")",
-                 "Helper: \(keepAlive.status)"] + recentEvents).joined(separator: "\n")
+                 "장시간 대기 설정: \(standby.isEnabled ? "켜짐" : "꺼짐")",
+                 "위치 대기: \(standby.status)",
+                 "백그라운드 앱 새로 고침: \(standby.backgroundRefreshStatusText)",
+                 "저전력 모드: \(standby.lowPowerModeEnabled ? "켜짐" : "꺼짐")",
+                 "마지막 실행 점검: \(lastStandbyCheck.map { $0.formatted(date: .omitted, time: .standard) } ?? "없음")"] + recentEvents).joined(separator: "\n")
     }
 
     private let observer = CXCallObserver()
     private let gate = CallTapRawAXGate()
-    private let keepAlive = AirRecordKeepAliveController.shared
+    private let standby = AirRecordLocationKeepAlive.shared
     private var timer: Timer?
+    private var standbyTimer: Timer?
+    private var lastStandbyCheck: Date?
     private var workerIsRunning = false
-    private var waitingForHelperRecheck = false
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     private var preparationID = UUID()
     private var shortcutPreparation: Task<Bool, Never>?
@@ -171,20 +176,11 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
         self.defaults = defaults
         isEnabled = defaults.bool(forKey: Self.enabledKey)
         super.init()
-        keepAlive.onLeaseLost = { [weak self] message in
-            guard let self, self.isRunning || self.isPreparing || self.waitingForHelperRecheck else { return }
+        standby.onStopped = { [weak self] message in
+            guard let self, self.isRunning || self.isPreparing else { return }
             self.pause(message: message + " 자동 시작 설정은 유지됩니다.")
         }
-        keepAlive.onLeaseRechecking = { [weak self] message in
-            guard let self, self.isEnabled, self.isRunning else { return }
-            self.pause(message: message, preservingKeepAlive: true)
-            self.waitingForHelperRecheck = true
-        }
-        keepAlive.onLeaseRecovered = { [weak self] in
-            guard let self, self.isEnabled, self.waitingForHelperRecheck, !self.isPreparing else { return }
-            Task { @MainActor in await self.prepare() }
-        }
-        keepAlive.onDiagnostic = { [weak self] message in self?.recordEvent("Helper 확인: " + message) }
+        standby.onEvent = { [weak self] message in self?.recordEvent("위치 대기: " + message) }
         if isEnabled { status = "자동 시작 설정이 유지되어 있습니다. 연결을 확인하면 재개합니다." }
     }
 
@@ -198,16 +194,17 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
     }
 
     func resumeIfEnabled() async {
+        standby.refreshEnvironment()
         guard isEnabled, UIApplication.shared.applicationState == .active else { return }
-        keepAlive.validateConnection()
+        noteStandbyProgress()
         await prepare()
     }
 
-    func setKeepAliveEnabled(_ enabled: Bool) async {
+    func setLocationStandbyEnabled(_ enabled: Bool) async {
         // Revoke any in-flight input before changing execution support. The
         // call policy retains all recording reservations across this restart.
-        pause(message: "백그라운드 유지 설정을 변경합니다.")
-        keepAlive.setEnabled(enabled)
+        pause(message: "장시간 대기 설정을 변경합니다.")
+        standby.setEnabled(enabled)
         if isEnabled { await prepare() }
     }
 
@@ -230,7 +227,7 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
                 // Refresh even a running lease: it may be about to expire.
                 // The same gate/policy retains all prior one-shot reservations.
                 self.pause(message: "단축어에서 VPN 연결과 통화 감시를 다시 준비합니다.",
-                           preservingShortcutPreparation: true, preservingKeepAlive: true)
+                           preservingShortcutPreparation: true, preservingLocation: true)
                 await self.prepare(retryTunnelFor: 8)
                 return self.isEnabled && self.isRunning && !Task.isCancelled
             }
@@ -258,7 +255,6 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
 
     private func prepare(retryTunnelFor: TimeInterval = 8) async {
         guard isEnabled, !isRunning, !isPreparing else { return }
-        let preserveWindows = waitingForHelperRecheck
         isPreparing = true
         let request = UUID()
         preparationID = request
@@ -296,13 +292,13 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
             return
         }
 
-        if keepAlive.isEnabled {
-            setStatus("Helper의 실제 디버거 연결을 준비하고 있습니다.")
-            let ready = await keepAlive.ensureStarted()
+        if standby.isEnabled {
+            setStatus("위치 서비스로 장시간 대기를 준비하고 있습니다.")
+            let ready = await standby.startIfEnabled()
             guard preparationID == request, isPreparing, isEnabled, !Task.isCancelled else { return }
-            guard ready, keepAlive.hasLiveLease else {
+            guard ready, standby.isRunning else {
                 isPreparing = false
-                setStatus(keepAlive.status)
+                setStatus(standby.status)
                 return
             }
         }
@@ -312,14 +308,8 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
             // synchronously, and never let an old expiration pause a new run.
             guard let self, self.preparationID == request else { return }
             self.endBackgroundLease()
-            if self.keepAlive.isEnabled {
-                // Expiration may race a delayed receive callback too. Classify
-                // it through the same challenge path before any teardown.
-                self.keepAlive.validateConnection()
-                if !self.isRunning || self.keepAlive.isRechecking { return }
-            }
-            if self.keepAlive.hasLiveLease {
-                self.recordEvent("일반 백그라운드 시간은 끝났으며 실제 Helper 연결로 감시를 유지합니다.")
+            if self.standby.isEnabled && self.standby.isRunning {
+                self.recordEvent("일반 백그라운드 시간은 끝났으며 위치 대기 세션을 유지합니다.")
                 return
             }
             self.pause(message: "자동 시작 설정은 켜져 있습니다. iOS가 감시를 일시 중단했으며 앱으로 돌아오면 자동 재개합니다.")
@@ -327,7 +317,7 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
                 Task { await self.resumeIfEnabled() }
             }
         }
-        guard backgroundTask != .invalid || keepAlive.hasLiveLease else {
+        guard backgroundTask != .invalid || (standby.isEnabled && standby.isRunning) else {
             isPreparing = false
             setStatus("백그라운드 실행 시간을 받지 못했습니다. 잠시 후 다시 켜 주세요.")
             return
@@ -335,10 +325,10 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
 
         observer.setDelegate(self, queue: .main)
         updateCalls()
-        _ = gate.start(preservingWindows: preserveWindows)
+        _ = gate.start()
         isPreparing = false
         isRunning = true
-        waitingForHelperRecheck = false
+        startStandbyChecks()
         setStatus(waitingStatus)
         evaluate()
     }
@@ -350,7 +340,7 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
     }
 
     private func pause(message: String, preservingShortcutPreparation: Bool = false,
-                       preservingKeepAlive: Bool = false) {
+                       preservingLocation: Bool = false) {
         if !preservingShortcutPreparation {
             // Revoke the ID before cancellation: an old cancellation handler
             // must never match and pause a later manual or foreground run.
@@ -360,15 +350,16 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
             previous?.cancel()
         }
         preparationID = UUID()
-        waitingForHelperRecheck = false
         gate.stop() // Invalidates worker callbacks before touching UI/task state.
         isRunning = false
         isPreparing = false
         timer?.invalidate()
         timer = nil
+        standbyTimer?.invalidate()
+        standbyTimer = nil
         observer.setDelegate(nil, queue: nil)
         endBackgroundLease()
-        if !preservingKeepAlive { keepAlive.stop() }
+        if !preservingLocation { standby.stop() }
         setStatus(message)
         // Never join a blocking network worker on the main actor. Its callbacks
         // now refuse input, and the client's bounded operation closes normally.
@@ -382,8 +373,34 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
     }
 
     private var waitingStatus: String {
-        keepAlive.hasLiveLease ? "통화 연결을 기다립니다. Helper 개발자 연결을 유지 중입니다."
+        (standby.isEnabled && standby.isRunning) ? "통화 연결을 기다립니다. 위치 서비스를 이용한 장시간 대기 중입니다."
             : "통화 연결을 기다립니다. 백그라운드 허용 시간 안에서 동작합니다."
+    }
+
+    private func startStandbyChecks() {
+        standbyTimer?.invalidate()
+        standbyTimer = nil
+        guard standby.isEnabled, standby.isRunning else { return }
+        lastStandbyCheck = Date()
+        // Diagnostic only. This timer does not request background runtime or
+        // treat a stationary location-update interval as a session failure.
+        let check = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.noteStandbyProgress() }
+        }
+        standbyTimer = check
+        RunLoop.main.add(check, forMode: .common)
+    }
+
+    private func noteStandbyProgress() {
+        guard isRunning, standby.isEnabled else { return }
+        let now = Date()
+        if let lastStandbyCheck, now.timeIntervalSince(lastStandbyCheck) > 75 {
+            recordEvent("대기 실행 점검에 \(Int(now.timeIntervalSince(lastStandbyCheck)))초 공백이 있었습니다. 공백 중 감시 여부는 확인되지 않았습니다.")
+        }
+        lastStandbyCheck = now
+        if !standby.isRunning {
+            pause(message: "위치 대기 세션이 중지되어 통화 감시를 일시 중지했습니다. 자동 시작 설정은 유지됩니다.")
+        }
     }
 
     nonisolated func callObserver(_ callObserver: CXCallObserver, callChanged call: CXCall) {
@@ -399,13 +416,9 @@ final class CallTapRawAXMonitor: NSObject, ObservableObject, CXCallObserverDeleg
 
     private func evaluate() {
         guard isRunning else { return }
-        if keepAlive.isEnabled && !keepAlive.hasLiveLease {
-            keepAlive.validateConnection()
-            guard isRunning else { return }
-            if !keepAlive.hasLiveLease {
-                pause(message: keepAlive.status, preservingKeepAlive: keepAlive.isRechecking)
-                return
-            }
+        if standby.isEnabled && !standby.isRunning {
+            pause(message: standby.status + " 자동 시작 설정은 유지됩니다.")
+            return
         }
         updateCalls()
         guard !workerIsRunning else { return }

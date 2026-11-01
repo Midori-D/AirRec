@@ -23,15 +23,22 @@ targets:
     platform: iOS
     sources:
       - path: iCTRLApp
+        excludes:
+          - Automation/AirRecordKeepAliveController.swift
+          - Automation/AirRecordKeepAliveExtension.h
+          - Automation/AirRecordKeepAliveExtension.m
       - path: iCTRLKit
+        excludes:
+          - KeepAlive/AirRecordDebugWorker.swift
+          - KeepAlive/AirRecordKeepAliveWire.swift
+          - KeepAlive/AirRecordKeepAliveProcess.h
+          - KeepAlive/AirRecordKeepAliveProcess.m
       # Shared with the runner: one string table for both processes, so a phrase
       # the user sees in a notification matches the one in the app.
       - path: iCTRLUITests/Localized.swift
       - path: iCTRLUITests/CallTapPolicy.swift
 
     dependencies:
-      - target: AirRecordKeepAliveHelper
-        embed: true
       # idevice (MIT) — the lockdown/RSD/image-mounter client that does the
       # actual DDI mount. Fetched by Scripts/fetch-idevice.sh rather than
       # committed: the upstream xcframework is a 215MB release asset and is not
@@ -60,26 +67,6 @@ targets:
         # iOS denies UIApplication.open() for these schemes with no error, which
         # would break the Start button and the StikDebug shortcut.
         INFOPLIST_FILE: iCTRLApp/Info.plist
-
-  AirRecordKeepAliveHelper:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: iCTRLKeepAliveHelper
-      - path: iCTRLKit/KeepAlive
-    dependencies:
-      - framework: Frameworks/IDevice.xcframework
-        embed: false
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: "$(ICTRL_BUNDLE_PREFIX).ictrl.keepalive"
-        PRODUCT_NAME: AirRecordKeepAliveHelper
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_FILE: iCTRLKeepAliveHelper/Info.plist
-        SWIFT_OBJC_BRIDGING_HEADER: iCTRLKeepAliveHelper/KeepAlive-Bridging-Header.h
-        CODE_SIGN_STYLE: Automatic
-        SKIP_INSTALL: YES
-        APPLICATION_EXTENSION_API_ONLY: YES
 
   iCTRLUITests:
     type: bundle.ui-testing

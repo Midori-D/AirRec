@@ -6,6 +6,7 @@ trap 'rm -rf "$CALLTAP_TEST_DIR"' EXIT
 swiftc "$CALLTAP_ROOT/iCTRLUITests/CallTapPolicy.swift" \
   "$CALLTAP_ROOT/iCTRLKit/KeepAlive/AirRecordKeepAliveLease.swift" \
   "$CALLTAP_ROOT/iCTRLKit/KeepAlive/AirRecordKeepAliveWire.swift" \
+  "$CALLTAP_ROOT/iCTRLKit/KeepAlive/AirRecordLocationSessionPolicy.swift" \
   "$CALLTAP_ROOT/Tests/CallTapPolicy/main.swift" \
   -D CALLTAP_RAWAX \
   -o "$CALLTAP_TEST_DIR/calltap-policy-tests"

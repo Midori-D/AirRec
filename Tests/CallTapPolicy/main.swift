@@ -318,4 +318,83 @@ do {
     } catch { }
 }
 
-print("CallTapPolicy: state machine, menu, sampled lease freshness, bounded challenge recovery, and IPC checks passed")
+do {
+    var location = AirRecordLocationSessionPolicy()
+    check(location.session == nil && !location.isReady,
+          "location standby begins without an execution session")
+    let current = location.begin()
+    check(location.matches(current) && !location.isReady && location.lastSampledAt == nil,
+          "starting or waiting for permission does not claim location readiness")
+    check(!location.receivedSample(for: current, now: 1_000, sampledAt: 939.9)
+          && !location.isReady,
+          "a delayed cached fix cannot establish readiness at callback time")
+    check(location.receivedSample(for: current, now: 1_000, sampledAt: 940)
+          && location.isReady,
+          "a first sample within sixty seconds establishes this manager's readiness")
+    check(location.matches(current) && location.isReady,
+          "an already running location session can be reused without beginning a new generation")
+}
+
+do {
+    var location = AirRecordLocationSessionPolicy()
+    let current = location.begin()
+    for sample in [TimeInterval.nan, .infinity, -.infinity, -1, 1_001] {
+        check(!location.receivedSample(for: current, now: 1_000, sampledAt: sample),
+              "invalid or future location sampling times cannot establish readiness")
+    }
+    for received in [TimeInterval.nan, .infinity, -.infinity, -1] {
+        check(!location.receivedSample(for: current, now: received, sampledAt: 999),
+              "invalid callback times cannot establish readiness")
+    }
+    check(!location.isReady && location.lastSampledAt == nil,
+          "rejected initial callbacks leave the session unready")
+    check(location.receivedSample(for: current, now: 1_000, sampledAt: 999),
+          "valid data can arrive after permission and invalid cached callbacks")
+    check(!location.receivedSample(for: current, now: 1_001, sampledAt: 998),
+          "out-of-order location data cannot replace a newer accepted sample")
+    check(!location.receivedSample(for: current, now: 999.5, sampledAt: 999.5),
+          "a backwards callback clock does not replace current session evidence")
+    check(location.lastSampledAt == 999 && location.isReady,
+          "rejected later samples preserve valid execution evidence")
+}
+
+do {
+    var location = AirRecordLocationSessionPolicy()
+    let old = location.begin()
+    check(location.receivedSample(for: old, now: 1_000, sampledAt: 1_000),
+          "the initial manager establishes readiness")
+    let current = location.begin()
+    check(current != old && !location.isReady,
+          "a replacement manager requires a new generation and a new fresh sample")
+    check(!location.receivedSample(for: old, now: 1_001, sampledAt: 1_001)
+          && !location.isReady,
+          "a queued callback from the previous manager cannot ready the replacement")
+    check(!location.pause(for: old) && location.matches(current),
+          "an old manager's pause callback cannot stop the replacement")
+    check(location.receivedSample(for: current, now: 1_002, sampledAt: 1_002),
+          "the replacement manager can independently establish readiness")
+    check(location.pause(for: current) && !location.isReady && location.session == nil,
+          "a current pause revokes execution and invalidates its generation")
+    check(!location.receivedSample(for: current, now: 1_003, sampledAt: 1_003),
+          "a callback arriving after pause cannot silently resume execution")
+}
+
+do {
+    var location = AirRecordLocationSessionPolicy()
+    let stopped = location.begin()
+    location.stop()
+    check(!location.matches(stopped) && !location.isReady,
+          "Stop revokes a pending permission or sampling session")
+    check(!location.receivedSample(for: stopped, now: 1_000, sampledAt: 1_000),
+          "late authorization-following data cannot restart a stopped session")
+    let current = location.begin()
+    check(current != stopped && !location.isReady,
+          "an explicit later start waits for its own sample")
+    check(location.receivedSample(for: current, now: 1_001, sampledAt: 1_001),
+          "the explicit new start can become ready")
+    location.stop()
+    check(location.session == nil && !location.isReady && location.lastSampledAt == nil,
+          "Stop clears the current execution evidence")
+}
+
+print("CallTapPolicy: call safety, lease recovery, bounded IPC, and location session lifecycle checks passed")

@@ -17,23 +17,22 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.calltap.prototype.ictrl':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.1.6' or str(info.get('CFBundleVersion')) != '10':
+        if info.get('CFBundleShortVersionString') != '1.1.7' or str(info.get('CFBundleVersion')) != '11':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRecord':
             raise ValueError('Unexpected app display name.')
         if info.get('CallTapDirectOnly'):
             raise ValueError('Experimental direct connection marker must be absent.')
-        helper_prefix = prefix + 'PlugIns/AirRecordKeepAliveHelper.appex/'
-        helper = plistlib.loads(archive.read(helper_prefix + 'Info.plist'))
-        if helper.get('CFBundleIdentifier') != info['CFBundleIdentifier'] + '.keepalive':
-            raise ValueError('Unexpected Helper identifier.')
-        if not helper.get('AirRecordKeepAliveHelper') or helper.get('NSExtension', {}).get('NSExtensionPointIdentifier') != 'com.apple.share-services':
-            raise ValueError('Helper extension metadata missing.')
-        if helper.get('CFBundleShortVersionString') != '1.1.6' or str(helper.get('CFBundleVersion')) != '10':
-            raise ValueError('Unexpected Helper version.')
-        for metadata_info in (info, helper):
-            if metadata_info.get('UIBackgroundModes') or any(key.startswith(('NSLocation', 'NSMicrophone')) for key in metadata_info):
-                raise ValueError('Location, microphone and audio keepalive must be absent.')
+        if any('.appex/' in name or name.rstrip('/').endswith('.appex') for name in names):
+            raise ValueError('The location standby app must not contain Helper extensions.')
+        if info.get('UIBackgroundModes') != ['location']:
+            raise ValueError('Only the location background mode may be declared.')
+        usage = info.get('NSLocationWhenInUseUsageDescription')
+        if not isinstance(usage, str) or not all(word in usage for word in ('백그라운드', '저장', '전송')):
+            raise ValueError('Location standby privacy explanation missing.')
+        if any(key.startswith('NSMicrophone') or
+               (key.startswith('NSLocation') and key != 'NSLocationWhenInUseUsageDescription') for key in info):
+            raise ValueError('Microphone and Always location permissions must be absent.')
         icon = info.get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {})
         if icon.get('CFBundleIconName') != 'AppIcon':
             raise ValueError('App icon catalog missing.')
@@ -72,9 +71,9 @@ def verify(path):
             if not signed:
                 raise ValueError('Unsigned embedded Mach-O: ' + PurePosixPath(name).name)
             count += 1
-        if count < 2 or prefix+info['CFBundleExecutable'] not in names or helper_prefix+helper['CFBundleExecutable'] not in names:
+        if count < 1 or prefix+info['CFBundleExecutable'] not in names:
             raise ValueError('Main executable missing.')
-        print(f'PASS: AirRecord 1.1.6 (10), Helper, AppIcon, Shortcut metadata, {count} signed arm64 binary(s), no location/audio/microphone/direct connector/XCTest/profile.')
+        print(f'PASS: AirRecord 1.1.7 (11), location standby permission, AppIcon, Shortcut metadata, {count} signed arm64 binary(s), no Helper/audio/microphone/Always/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])
