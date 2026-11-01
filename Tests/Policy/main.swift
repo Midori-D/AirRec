@@ -480,4 +480,94 @@ do {
           "a package missing its privacy explanation cannot request permission")
 }
 
-print("AirRecordPolicy: call safety, lease recovery, bounded IPC, location session, indicator and explicit background permission checks passed")
+do {
+    typealias Wait = AirRecordRecordingWaitPolicy
+    let generation = UUID(), laterGeneration = UUID()
+    let call = AirRecordCallState(id: firstID, hasConnected: true, hasEnded: false, isOnHold: false)
+    let other = AirRecordCallState(id: secondID, hasConnected: true, hasEnded: false, isOnHold: false)
+    func observe(_ policy: inout Wait, now: TimeInterval = 101,
+                 calls: [AirRecordCallState] = [], enabled: Bool = true,
+                 current: UUID, owned: UUID, prepared: Bool? = true,
+                 result: Wait.NativeResult? = nil, nativeGeneration: UInt64? = 7,
+                 inFlight: Bool = false, cancelled: Bool = false) -> Wait.Decision {
+        policy.decision(now: now, calls: calls, enabled: enabled,
+                        currentGeneration: current, ownedGeneration: owned,
+                        preparationResult: prepared, nativeResult: result,
+                        currentNativeGeneration: nativeGeneration,
+                        nativeWorkInFlight: inFlight, cancelled: cancelled)
+    }
+    check(Wait.boundedTimeout(0) == 1 && Wait.boundedTimeout(-10) == 1
+          && Wait.boundedTimeout(90) == 60 && Wait.boundedTimeout(45) == 45,
+          "recording waits clamp finite requests to one through sixty seconds")
+    check(Wait.boundedTimeout(.nan) == 45 && Wait.boundedTimeout(.infinity) == 45,
+          "invalid timeout requests use a finite forty-five-second default")
+
+    var preparation = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    check(observe(&preparation, now: 120, current: generation, owned: generation, prepared: nil) == .waiting,
+          "preparation consumes the same bounded wait rather than starting a second timer")
+    check(observe(&preparation, now: 145, current: generation, owned: generation, prepared: nil) == .finished(.timedOut),
+          "the original deadline expires even if preparation has not returned")
+    check(observe(&preparation, now: 146, calls: [call], current: generation, owned: generation,
+                  result: .init(outcome: .confirmed, generation: 7)) == .finished(.timedOut),
+          "a late native result cannot change a finished timeout")
+
+    var success = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    check(observe(&success, calls: [call], current: generation, owned: generation, prepared: nil) == .waiting
+          && success.callID == firstID,
+          "one active call is fixed while preparation is still pending")
+    let confirmed = Wait.NativeResult(outcome: .confirmed, generation: 7)
+    check(observe(&success, now: 102, calls: [call], current: generation, owned: generation,
+                  result: confirmed, inFlight: true) == .waiting,
+          "even completion evidence cannot return while native work is still in flight")
+    check(observe(&success, now: 103, calls: [call], current: generation, owned: generation,
+                  result: confirmed) == .finished(.native(.confirmed, reused: false)),
+          "native-confirmed recording completes only after the worker returned")
+
+    for outcome in [Wait.NativeOutcome.alreadyRecording, .submittedUnconfirmed, .failedAfterReservation] {
+        var resultWait = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+        let result = Wait.NativeResult(outcome: outcome, generation: 6)
+        check(observe(&resultWait, calls: [call], current: generation, owned: generation,
+                      result: result) == .finished(.native(outcome, reused: true)),
+              "same-call returned results are reusable and distinguished from current-generation proof")
+    }
+
+    var ended = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    _ = observe(&ended, calls: [call], current: generation, owned: generation)
+    check(observe(&ended, now: 102, current: generation, owned: generation) == .finished(.callEnded),
+          "ending the fixed call ends the wait rather than following a future call")
+    var changed = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    _ = observe(&changed, calls: [call], current: generation, owned: generation)
+    check(observe(&changed, now: 102, calls: [other], current: generation, owned: generation) == .finished(.callChanged),
+          "a different active call cannot satisfy the previous call's wait")
+    var multiple = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    check(observe(&multiple, calls: [call, other], current: generation, owned: generation) == .finished(.multipleCalls),
+          "multiple calls fail the single-call observation requirement")
+
+    var ownedPreparation = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    _ = observe(&ownedPreparation, current: generation, owned: generation, prepared: nil)
+    check(observe(&ownedPreparation, now: 102, calls: [call], current: laterGeneration,
+                  owned: laterGeneration) == .waiting,
+          "the explicit owner's pause-to-prepare transition is accepted before readiness")
+    check(observe(&ownedPreparation, now: 103, calls: [call], current: generation,
+                  owned: generation, result: confirmed) == .finished(.superseded),
+          "a new preparation cannot replace a wait's generation once readiness was established")
+    var foreignPreparation = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    check(observe(&foreignPreparation, current: laterGeneration, owned: generation, prepared: nil) == .finished(.superseded),
+          "a foreign generation invalidates the wait even during preparation")
+
+    var stopped = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    check(observe(&stopped, enabled: false, current: generation, owned: generation) == .finished(.stopped),
+          "a saved OFF main feature cannot be revived by completion evidence")
+    var cancelled = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    check(observe(&cancelled, current: generation, owned: generation, cancelled: true) == .finished(.cancelled),
+          "cancellation is a conventional terminal result")
+    var failed = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    check(observe(&failed, current: generation, owned: generation, prepared: false) == .finished(.preparationFailed),
+          "preparation failure returns without waiting for a call or a second deadline")
+    var clock = Wait(startedAt: 100, timeout: 45, initialGeneration: generation)
+    _ = observe(&clock, now: 110, current: generation, owned: generation, prepared: nil)
+    check(observe(&clock, now: 109, current: generation, owned: generation, prepared: nil) == .finished(.invalidClock),
+          "a backwards monotonic clock cannot extend or complete a recording wait")
+}
+
+print("AirRecordPolicy: call safety, lease recovery, bounded IPC, location permissions and bounded recording waits passed")

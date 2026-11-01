@@ -26,13 +26,11 @@ struct DDIMountView: View {
     @State private var onWiFi = false
     @State private var networkObserved = false
 
-    /// All three prerequisites, in the order the steps present them. The tunnel
-    /// is included because it drops on every reboot — leaving it out let the
-    /// mount fail with a socket error naming nothing the user could act on.
-    /// All prerequisites, in the order the steps present them. Wi-Fi is included
-    /// because the tunnel needs a local interface that cellular doesn't offer.
+    /// Check the actual tunnel rather than rejecting an offline local route
+    /// solely because the default path is not Wi-Fi. The mounter still verifies
+    /// pairing, the developer connection, and the actual mounted image.
     private var canMount: Bool {
-        hasPairingFile && imagesReady && onWiFi && tunnelUp && !mounter.isRunning
+        hasPairingFile && imagesReady && tunnelUp && !mounter.isRunning
     }
 
     var body: some View {
@@ -104,7 +102,6 @@ struct DDIMountView: View {
     private var missingPrerequisite: String {
         if !hasPairingFile { return L10n.t(.noPairingFile) }
         if !imagesReady { return L10n.t(.imagesNotDownloaded) }
-        if !onWiFi { return L10n.t(.notOnWiFi) }
         if !tunnelUp {
             if tunnelProbe == .localNetworkDenied { return L10n.t(.localNetworkDeniedDetail) }
             return vpnInstalled ? L10n.t(.vpnNotConnected) : L10n.t(.vpnNotInstalled)
@@ -193,15 +190,16 @@ struct DDIMountView: View {
         }
     }
 
-    // ② Wi-Fi. The tunnel rides the local network interface, which cellular
-    //    does not provide — so any Wi-Fi will do, but some Wi-Fi is required.
+    // Wi-Fi is the usual path; a responding offline VPN route may also be tried.
     private var wifiSection: some View {
         Section {
-            stepRow(3, done: onWiFi,
-                    title: L10n.t(.wifiRequired),
-                    detail: onWiFi ? L10n.t(.wifiConnected) : L10n.t(.wifiMissing))
+            stepRow(3, done: onWiFi || tunnelUp,
+                    title: "네트워크 준비",
+                    detail: onWiFi ? "Wi-Fi에 연결되어 있습니다."
+                        : tunnelUp ? "VPN 응답을 확인했습니다. 개발자 연결은 마운트할 때 검사합니다."
+                        : "Wi-Fi에 연결하거나, 셀룰러 데이터를 끈 뒤 LocalDevVPN을 연결하세요.")
         } footer: {
-            Text(L10n.t(.wifiFooter))
+            Text("Wi-Fi가 없을 때는 셀룰러 데이터를 잠시 끈 로컬 VPN 연결을 시험할 수 있습니다. 디스크 파일은 데이터를 끄기 전에 다운로드하세요. 이 화면에서 데이터를 껐다면 작업 후 직접 다시 켜 주세요.")
         }
     }
 

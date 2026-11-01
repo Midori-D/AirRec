@@ -344,6 +344,18 @@ struct AirRecordGlassView: View {
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
             .font(.subheadline)
+            DisclosureGroup("셀룰러 자동화 · 실험") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("셀룰러 데이터를 수동으로 끈 상태에서 확인한 실험 기능입니다. Wi-Fi 없이 사용할 때 아래 순서로 전화 앱 열기 자동화를 만드세요.")
+                    Text("1. 셀룰러 데이터 끄기\n2. LocalDevVPN 연결\n3. AirRecord · 녹음 시작 대기\n4. 셀룰러 데이터 켜기")
+                    Text("‘녹음 시작 대기’가 감시 재개도 함께 처리합니다. 홈에서 AirRecord를 활성화하고 백그라운드 위치 대기를 먼저 준비하세요.")
+                    Text("녹음 처리 결과나 통화 종료를 확인하면 다음 동작으로 넘어갑니다. 기본 대기는 45초이며 1~60초로 제한됩니다. 실패나 시간 초과도 결과를 반환합니다.")
+                    Text("대기 중에는 모바일 인터넷이 끊깁니다. 자동화를 직접 중단하거나 iOS가 종료하면 마지막 데이터 켜기가 실행되지 않을 수 있으므로 직접 다시 켜 주세요.")
+                    Text("자동 복구와 복구 후 녹음 유지는 새 버전의 첫 통화에서 확인해야 합니다. 이 자동화는 전화 수신 자체를 감지하지 않습니다.")
+                }
+                .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+            }
+            .font(.subheadline)
         }
     }
 

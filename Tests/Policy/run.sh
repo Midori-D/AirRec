@@ -9,6 +9,7 @@ swiftc "$AIRRECORD_ROOT/Sources/Core/Automation/AirRecordPolicy.swift" \
   "$AIRRECORD_ROOT/Sources/Core/Background/AirRecordLocationSessionPolicy.swift" \
   "$AIRRECORD_ROOT/Sources/Core/Background/AirRecordLocationIndicatorPolicy.swift" \
   "$AIRRECORD_ROOT/Sources/Core/Background/AirRecordBackgroundPermissionPolicy.swift" \
+  "$AIRRECORD_ROOT/Sources/Core/Background/AirRecordRecordingWaitPolicy.swift" \
   "$AIRRECORD_ROOT/Tests/Policy/main.swift" \
   -D AIRRECORD_AUTOMATION -D CALLTAP_RAWAX \
   -o "$AIRRECORD_TEST_DIR/airrecord-policy-tests"

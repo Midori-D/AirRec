@@ -171,6 +171,14 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     private var preparationID = UUID()
     private var shortcutPreparation: Task<Bool, Never>?
     private var shortcutPreparationID: UUID?
+    private var nativeGeneration: UInt64?
+    private var recordingResults: [UUID: AirRecordRecordingWaitPolicy.NativeResult] = [:]
+    private var recordingWait: Task<String, Never>?
+    private var recordingWaitID: UUID?
+    private var recordingWaitResume: Task<Bool, Never>?
+    private var recordingWaitShortcutID: UUID?
+    private var recordingWaitOwnedGeneration: UUID?
+    private var recordingWaitPreparationResult: Bool?
     private let defaults: UserDefaults
     private static let enabledKey = "CallTap.RawAX.autoStartEnabled"
 
@@ -231,7 +239,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
 
     /// A user-configured Shortcut may rearm this process without switching
     /// away from Phone. It does not turn a saved OFF preference back on.
-    func resumeFromShortcut() async -> Bool {
+    func resumeFromShortcut(recordingWaitOwner: UUID? = nil) async -> Bool {
         guard isEnabled, !Task.isCancelled else {
             if !isEnabled { setStatus("앱에서 자동 시작을 먼저 켜 주세요.") }
             return false
@@ -249,12 +257,17 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
                 // The same gate/policy retains all prior one-shot reservations.
                 self.pause(message: "단축어에서 VPN 연결과 통화 감시를 다시 준비합니다.",
                            preservingShortcutPreparation: true, preservingLocation: true)
-                await self.prepare(retryTunnelFor: 8)
+                self.bindRecordingWaitPreparation(shortcut: request)
+                await self.prepare(retryTunnelFor: 8, shortcutOwner: request)
                 return self.isEnabled && self.isRunning && !Task.isCancelled
             }
             shortcutPreparationID = request
             shortcutPreparation = task
             preparation = task
+        }
+        if let owner = recordingWaitOwner, recordingWaitID == owner {
+            recordingWaitShortcutID = request
+            recordingWaitOwnedGeneration = preparationID
         }
         let ready = await withTaskCancellationHandler {
             await preparation.value
@@ -274,11 +287,155 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         return ready && isEnabled && isRunning && !Task.isCancelled
     }
 
-    private func prepare(retryTunnelFor: TimeInterval = 8) async {
+    /// Optional Shortcut step between the user's cellular-data OFF and ON
+    /// actions. Conventional failures are text results so the next step runs.
+    /// This method observes the existing engine; it never presses a button.
+    func waitForRecordingFromShortcut(timeout: TimeInterval = 45) async -> String {
+        let request: UUID
+        let shared: Task<String, Never>
+        if let existing = recordingWait, let id = recordingWaitID {
+            request = id
+            shared = existing
+        } else {
+            guard isEnabled else { return "AirRecord가 꺼져 있습니다. 다음 동작에서 셀룰러 데이터를 복구하세요." }
+            guard !Task.isCancelled else { return "녹음 대기를 취소했습니다. 셀룰러 데이터 상태를 확인하세요." }
+            request = UUID()
+            let startedAt = ProcessInfo.processInfo.systemUptime
+            let initialGeneration = preparationID
+            recordingWaitID = request
+            recordingWaitOwnedGeneration = initialGeneration
+            recordingWaitShortcutID = nil
+            recordingWaitPreparationResult = nil
+            let task = Task { @MainActor in
+                await self.runRecordingWait(request: request, startedAt: startedAt,
+                                            timeout: timeout, initialGeneration: initialGeneration)
+            }
+            recordingWait = task
+            shared = task
+        }
+        let result = await withTaskCancellationHandler {
+            await shared.value
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.cancelRecordingWait(request: request) }
+        }
+        if Task.isCancelled { cancelRecordingWait(request: request) }
+        if recordingWaitID == request {
+            recordingWait = nil
+            recordingWaitID = nil
+            recordingWaitResume = nil
+            recordingWaitShortcutID = nil
+            recordingWaitOwnedGeneration = nil
+            recordingWaitPreparationResult = nil
+        }
+        return result
+    }
+
+    private func runRecordingWait(request: UUID, startedAt: TimeInterval,
+                                  timeout: TimeInterval, initialGeneration: UUID) async -> String {
+        var policy = AirRecordRecordingWaitPolicy(startedAt: startedAt, timeout: timeout,
+                                                 initialGeneration: initialGeneration)
+        let resume = Task { @MainActor in
+            guard self.recordingWaitID == request, self.preparationID == initialGeneration,
+                  self.isEnabled, !Task.isCancelled else { return false }
+            let ready = await self.resumeFromShortcut(recordingWaitOwner: request)
+            if self.recordingWaitID == request { self.recordingWaitPreparationResult = ready }
+            return ready
+        }
+        recordingWaitResume = resume
+        while recordingWaitID == request {
+            let calls = currentCalls()
+            updateCalls()
+            let result = policy.callID.flatMap { recordingResults[$0] }
+            let decision = policy.decision(
+                now: ProcessInfo.processInfo.systemUptime, calls: calls, enabled: isEnabled,
+                currentGeneration: preparationID,
+                ownedGeneration: recordingWaitOwnedGeneration ?? initialGeneration,
+                preparationResult: recordingWaitPreparationResult, nativeResult: result,
+                currentNativeGeneration: nativeGeneration, nativeWorkInFlight: workerIsRunning,
+                cancelled: Task.isCancelled)
+            if case .finished(let outcome) = decision {
+                return finishRecordingWait(outcome, request: request)
+            }
+            do { try await Task.sleep(nanoseconds: 150_000_000) }
+            catch { return finishRecordingWait(.cancelled, request: request) }
+        }
+        resume.cancel()
+        return "녹음 대기가 다른 요청으로 바뀌었습니다. 셀룰러 데이터 상태를 확인하세요."
+    }
+
+    private func bindRecordingWaitPreparation(shortcut request: UUID) {
+        guard recordingWaitID != nil, recordingWaitShortcutID == request,
+              shortcutPreparationID == request else { return }
+        recordingWaitOwnedGeneration = preparationID
+    }
+
+    private func pauseRecordingWaitGeneration(request: UUID, message: String) {
+        guard recordingWaitID == request, let owned = recordingWaitOwnedGeneration,
+              owned == preparationID else { return }
+        // pause invalidates the gate synchronously before the Shortcut returns
+        // and the user's next action restores cellular data.
+        pause(message: message, preservingLocation: true)
+    }
+
+    private func cancelRecordingWait(request: UUID) {
+        guard recordingWaitID == request else { return }
+        recordingWait?.cancel()
+        pauseRecordingWaitGeneration(request: request,
+                                     message: "단축어의 녹음 대기를 취소했습니다. 자동 시작 설정은 유지됩니다.")
+        recordingWaitResume?.cancel()
+    }
+
+    private func finishRecordingWait(_ outcome: AirRecordRecordingWaitPolicy.Result, request: UUID) -> String {
+        switch outcome {
+        case .native:
+            break
+        case .stopped, .superseded:
+            break // A new generation belongs to a different user action.
+        default:
+            pauseRecordingWaitGeneration(request: request,
+                                         message: "단축어의 녹음 대기를 마쳤습니다. 자동 시작 설정은 유지됩니다.")
+        }
+        recordingWaitResume?.cancel()
+        let message: String
+        switch outcome {
+        case .native(let result, let reused):
+            if reused {
+                switch result {
+                case .confirmed, .alreadyRecording:
+                    message = "이 통화의 녹음 시작 처리는 이미 끝났습니다. 실제 타이머를 확인하세요."
+                case .submittedUnconfirmed:
+                    message = "이 통화의 녹음 요청은 이미 전달됐지만 실제 시작은 미확인입니다. 타이머를 확인하세요."
+                case .failedAfterReservation:
+                    message = "이 통화의 이전 시작 요청 결과를 확인하지 못했습니다. 다시 누르지 않았습니다."
+                }
+            } else {
+                switch result {
+                case .confirmed: message = "기본 전화 화면의 녹음 중 표식을 확인했습니다."
+                case .alreadyRecording: message = "기본 전화 화면이 이미 녹음 중임을 확인했습니다."
+                case .submittedUnconfirmed: message = "녹음 요청은 전달됐지만 실제 시작은 미확인입니다. 타이머를 확인하세요."
+                case .failedAfterReservation: message = "녹음 시작 요청의 결과를 확인하지 못했습니다. 다시 누르지 않았습니다."
+                }
+            }
+        case .stopped: message = "AirRecord가 중지되어 녹음 대기를 끝냈습니다."
+        case .superseded: message = "새 준비 요청이 시작되어 이전 녹음 대기를 끝냈습니다."
+        case .cancelled: message = "녹음 대기를 취소했습니다."
+        case .timedOut: message = "녹음 대기 시간이 끝났습니다. 현재 감시의 추가 입력을 중지했습니다."
+        case .invalidClock: message = "대기 시간을 확인할 수 없어 현재 감시의 추가 입력을 중지했습니다."
+        case .callEnded: message = "대상 통화가 종료되어 녹음 대기를 끝냈습니다."
+        case .callChanged: message = "대상 통화가 바뀌어 녹음 대기를 끝냈습니다."
+        case .multipleCalls: message = "활성 통화가 여럿이어서 녹음 대기를 끝냈습니다."
+        case .preparationFailed: message = "AirRecord 연결 준비가 완료되지 않아 녹음 대기를 끝냈습니다."
+        }
+        recordEvent("단축어 대기: " + message)
+        return message + " 다음 동작에서 셀룰러 데이터를 복구하고 상태를 확인하세요."
+    }
+
+    private func prepare(retryTunnelFor: TimeInterval = 8, shortcutOwner: UUID? = nil) async {
         guard isEnabled, !isRunning, !isPreparing else { return }
         isPreparing = true
         let request = UUID()
         preparationID = request
+        if let shortcutOwner { bindRecordingWaitPreparation(shortcut: shortcutOwner) }
         defer {
             // A canceled foreground task must release preparation and location
             // support, without allowing an old task to stop a newer request.
@@ -353,7 +510,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
 
         observer.setDelegate(self, queue: .main)
         updateCalls()
-        _ = gate.start()
+        nativeGeneration = gate.start()
         isPreparing = false
         isRunning = true
         startStandbyChecks()
@@ -379,6 +536,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         }
         preparationID = UUID()
         gate.stop() // Invalidates worker callbacks before touching UI/task state.
+        nativeGeneration = nil
         isRunning = false
         isPreparing = false
         timer?.invalidate()
@@ -435,11 +593,18 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         Task { @MainActor [weak self] in self?.evaluate() }
     }
 
-    private func updateCalls() {
-        gate.update(observer.calls.map {
+    private func currentCalls() -> [AirRecordCallState] {
+        observer.calls.map {
             AirRecordCallState(id: $0.uuid, hasConnected: $0.hasConnected,
                              hasEnded: $0.hasEnded, isOnHold: $0.isOnHold)
-        })
+        }
+    }
+
+    private func updateCalls() {
+        let calls = currentCalls()
+        gate.update(calls)
+        let active = Set(calls.filter { !$0.hasEnded }.map(\.id))
+        recordingResults = recordingResults.filter { active.contains($0.key) }
     }
 
     private func evaluate() {
@@ -532,16 +697,20 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         case .success(.openedMore):
             setStatus("더 보기를 열었습니다. 보이는 통화 녹음 항목을 확인합니다.")
         case .success(.startSubmitted):
+            recordingResults[inspection.callID] = .init(outcome: .submittedUnconfirmed, generation: inspection.generation)
             setStatus("녹음 요청은 전달됐지만 시작 표식을 자동 확인하지 못했습니다. 실제 타이머를 확인하세요. 이번 통화에는 다시 누르지 않습니다.")
         case .success(.alreadyRecording):
+            recordingResults[inspection.callID] = .init(outcome: .alreadyRecording, generation: inspection.generation)
             gate.markAlreadyRecording(inspection)
             setStatus("이미 녹음 중이어서 자동 시작을 건너뛰었습니다.")
         case .success(.recordingConfirmed):
+            recordingResults[inspection.callID] = .init(outcome: .confirmed, generation: inspection.generation)
             gate.markAlreadyRecording(inspection)
             setStatus("기본 전화 화면에서 녹음 중 상태를 확인했습니다.")
         case .failure(let error):
             // Never emit native exception text: it can contain private UI text.
             if gate.startWasReserved(inspection) {
+                recordingResults[inspection.callID] = .init(outcome: .failedAfterReservation, generation: inspection.generation)
                 setStatus("녹음 시작 요청의 결과를 확인하지 못했습니다. 이번 통화에는 다시 누르지 않습니다.")
             } else {
                 setStatus("통화 화면 검사에 실패했습니다. 준비 시간 안에서 다시 확인합니다.")
