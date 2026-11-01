@@ -432,4 +432,52 @@ do {
     }
 }
 
-print("AirRecordPolicy: call safety, lease recovery, bounded IPC, location session and indicator authorization checks passed")
+do {
+    typealias Permission = AirRecordBackgroundPermissionPolicy
+    func preflight(_ trigger: Permission.Trigger = .enabledByUser,
+                   monitoring: Bool = false,
+                   authorization: Permission.Authorization = .notDetermined,
+                   pending: Bool = false, foreground: Bool = true,
+                   liveContainer: Bool = false, purpose: Bool = true) -> Permission.Plan {
+        Permission.plan(trigger: trigger, monitoringEnabled: monitoring,
+                        authorization: authorization, requestPending: pending,
+                        isForeground: foreground, isLiveContainer: liveContainer,
+                        hasUsageDescription: purpose)
+    }
+    let independent = preflight()
+    check(independent.action == .requestWhenInUse && !independent.shouldPrepareMonitoring,
+          "explicit background-on requests basic permission while the main feature remains OFF; connection prerequisites are not inputs")
+    let enabled = preflight(monitoring: true)
+    check(enabled.action == .requestWhenInUse && !enabled.shouldPrepareMonitoring && enabled.requiresPermissionDecision,
+          "main ON still requests basic permission first and waits rather than preparing through an inactive permission sheet")
+    check(preflight(pending: true).action == .waitForDecision,
+          "repeating background-on while a request is pending cannot issue a second prompt")
+    check(preflight(monitoring: true, pending: true).requiresPermissionDecision,
+          "a still-enabled explicit activation waits for an existing permission decision")
+    for trigger in [Permission.Trigger.disabledByUser, .passive] {
+        check(preflight(trigger, monitoring: true).action == .none,
+              "background-off and passive preflight never add a permission request")
+    }
+    check(preflight(.disabledByUser, monitoring: true).shouldPrepareMonitoring,
+          "background-off retains the enabled main feature's finite-runtime fallback")
+    check(!preflight(.disabledByUser).shouldPrepareMonitoring,
+          "background-off never turns a saved OFF main feature on")
+    let permitted = preflight(monitoring: true, authorization: .authorized)
+    check(permitted.action == .none && permitted.shouldPrepareMonitoring,
+          "already-granted permission follows normal main-enabled preparation without a new prompt")
+    check(!preflight(authorization: .authorized).shouldPrepareMonitoring,
+          "permission already granted still cannot turn a saved OFF main feature on")
+    for authorization in [Permission.Authorization.denied, .restricted, .unknown] {
+        let blocked = preflight(monitoring: true, authorization: authorization)
+        check(blocked.action == .showSettings && !blocked.shouldPrepareMonitoring && !blocked.requiresPermissionDecision,
+              "denied, restricted, and unknown authorization offer Settings without fake prompts or execution")
+    }
+    check(preflight(foreground: false).action == .requireForeground,
+          "a new permission request requires an active foreground user action")
+    check(preflight(liveContainer: true).action == .unsupportedEnvironment,
+          "LiveContainer cannot issue the independent-app permission request")
+    check(preflight(purpose: false).action == .missingUsageDescription,
+          "a package missing its privacy explanation cannot request permission")
+}
+
+print("AirRecordPolicy: call safety, lease recovery, bounded IPC, location session, indicator and explicit background permission checks passed")

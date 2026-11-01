@@ -19,8 +19,8 @@ struct AirRecordContactView: View {
             welcomeCard
             developerCard
             supportCard
-            Text(version)
-                .font(.footnote).foregroundStyle(.secondary)
+            AirRecordVersionLabel(version: version)
+                .font(.footnote)
                 .frame(maxWidth: .infinity).padding(.vertical, 4)
         }
         .navigationTitle("문의")

@@ -27,7 +27,7 @@ struct AirRecordGlassView: View {
         let info = Bundle.main.infoDictionary ?? [:]
         let name = info["CFBundleShortVersionString"] as? String ?? "—"
         let build = info["CFBundleVersion"] as? String ?? "—"
-        return "Ver \(name) 빌드 \(build)"
+        return "Ver \(name) 빌드 \(build) - 알파"
     }
 
     var body: some View {
@@ -98,8 +98,8 @@ struct AirRecordGlassView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("AirRecord")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                Text(version)
-                    .font(.subheadline).foregroundStyle(.secondary)
+                AirRecordVersionLabel(version: version)
+                    .font(.subheadline)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -124,12 +124,6 @@ struct AirRecordGlassView: View {
                 Text(monitor.status)
                     .font(.subheadline).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else {
-                DisclosureGroup("연결 상세") {
-                    Text(monitor.status)
-                        .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
-                }
-                .font(.subheadline)
             }
             monitoringControls
         }
@@ -138,7 +132,7 @@ struct AirRecordGlassView: View {
     private var monitoringTitle: String {
         if monitor.isPreparing { return "AirRecord 연결 중" }
         if monitor.isRunning { return "AirRecord 활성화됨" }
-        return monitor.isEnabled ? "연결 필요" : "AirRecord 비활성화"
+        return monitor.isEnabled ? "연결 필요" : "AirRecord 비활성화 됨"
     }
 
     @ViewBuilder
@@ -210,8 +204,8 @@ struct AirRecordGlassView: View {
             systemSettingsCard
             shortcutCard
             guidanceCard
-            Text(version)
-                .font(.footnote).foregroundStyle(.secondary)
+            AirRecordVersionLabel(version: version)
+                .font(.footnote)
                 .frame(maxWidth: .infinity).padding(.vertical, 4)
         }
         .navigationTitle("설정")

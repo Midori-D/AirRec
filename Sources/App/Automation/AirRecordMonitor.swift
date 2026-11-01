@@ -207,7 +207,26 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         // call policy retains all recording reservations across this restart.
         pause(message: "장시간 대기 설정을 변경합니다.")
         standby.setEnabled(enabled)
-        if isEnabled { await prepare() }
+        guard !Task.isCancelled else { return }
+        let request = preparationID
+        // Ask on this explicit toggle before checking the main switch, pairing,
+        // or VPN. Permission-only preparation never turns the main switch on.
+        let plan = standby.requestBackgroundAuthorizationIfNeeded(monitoringEnabled: isEnabled)
+        if plan.requiresPermissionDecision && isEnabled {
+            setStatus(standby.status)
+            let ready = await standby.waitForBackgroundAuthorizationDecision {
+                self.preparationID == request && self.isEnabled && self.standby.isEnabled
+            }
+            // Off/Stop, another activation, or cancellation supersedes this
+            // caller; its late permission result must not start a new engine.
+            guard preparationID == request, isEnabled, standby.isEnabled, !Task.isCancelled else { return }
+            if ready { await prepare() }
+            else { setStatus(standby.status) }
+        } else if plan.shouldPrepareMonitoring {
+            await prepare()
+        } else if isEnabled && enabled {
+            setStatus(standby.status)
+        }
     }
 
     /// A user-configured Shortcut may rearm this process without switching

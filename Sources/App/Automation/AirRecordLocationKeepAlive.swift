@@ -92,6 +92,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         return manager
     }()
     private var permissionWhenInUseRequestSent = false
+    private var backgroundPermissionRequestPending = false
     private var alwaysRequestAttempted = false
     private var authorizationHint: String?
     private var updatesStarted = false
@@ -119,6 +120,87 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
             status = "장시간 대기가 꺼져 있습니다."
         } else if !isRunning {
             status = "위치 서비스로 장시간 대기를 준비합니다. 위치 좌표는 사용·저장·전송하지 않습니다."
+        }
+    }
+
+    /// The background toggle is an explicit permission action even when the
+    /// main feature is OFF or developer-connection prerequisites are missing.
+    /// This preflight never starts location updates or requests Always access.
+    func requestBackgroundAuthorizationIfNeeded(monitoringEnabled: Bool) -> AirRecordBackgroundPermissionPolicy.Plan {
+        refreshAuthorizationPresentation()
+        let purpose = Bundle.main.object(forInfoDictionaryKey: "NSLocationWhenInUseUsageDescription") as? String ?? ""
+        let plan = AirRecordBackgroundPermissionPolicy.plan(
+            trigger: isEnabled ? .enabledByUser : .disabledByUser,
+            monitoringEnabled: monitoringEnabled,
+            authorization: backgroundPermissionAuthorization,
+            requestPending: permissionWhenInUseRequestSent || authorizationRequested,
+            isForeground: UIApplication.shared.applicationState == .active,
+            isLiveContainer: isLiveContainer,
+            hasUsageDescription: !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        switch plan.action {
+        case .requestWhenInUse:
+            backgroundPermissionRequestPending = true
+            permissionWhenInUseRequestSent = true
+            authorizationHint = nil
+            status = "위치 권한 선택을 기다립니다. ‘앱을 사용하는 동안 허용’을 선택해 주세요."
+            refreshAuthorizationPresentation()
+            onEvent?("백그라운드 설정을 켜 기본 위치 권한을 요청했습니다.")
+            permissionManager.requestWhenInUseAuthorization()
+        case .waitForDecision:
+            backgroundPermissionRequestPending = true
+            status = "이미 요청한 기본 위치 권한의 선택을 기다립니다."
+        case .showSettings:
+            authorizationHint = "권한 창을 다시 표시할 수 없는 상태입니다. iOS 설정에서 위치 권한을 확인하세요."
+            status = "기본 위치 권한이 없어 백그라운드 대기를 준비하지 못했습니다. iOS 설정에서 확인하세요."
+            refreshAuthorizationPresentation()
+        case .requireForeground:
+            status = "기본 위치 권한을 요청하려면 AirRecord를 화면에 연 상태에서 백그라운드 설정을 다시 켜 주세요."
+        case .unsupportedEnvironment:
+            status = "백그라운드 위치 권한은 SideStore에 독립 설치한 AirRecord에서 준비하세요."
+        case .missingUsageDescription:
+            status = "이 설치에는 기본 위치 권한 설명이 없습니다. 새 IPA를 설치하세요."
+        case .none:
+            if isEnabled && !isRunning {
+                status = "위치 권한을 확인했습니다. 연결 준비 후 백그라운드 대기를 시작할 수 있습니다."
+            }
+        }
+        return plan
+    }
+
+    /// Continue only the explicit caller's still-current activation. The wait is
+    /// bounded and does not rely solely on a permission-sheet lifecycle event.
+    func waitForBackgroundAuthorizationDecision(while shouldContinue: @MainActor () -> Bool) async -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + 45
+        while shouldContinue() && isEnabled && !Task.isCancelled {
+            refreshAuthorizationPresentation()
+            switch backgroundPermissionAuthorization {
+            case .authorized:
+                if UIApplication.shared.applicationState == .active { return true }
+            case .denied, .restricted, .unknown:
+                authorizationHint = "iOS 설정에서 위치 권한을 확인하세요. 기본 권한 요청으로 ‘항상 허용’을 자동 요청하지 않습니다."
+                status = "기본 위치 권한을 확인하지 못해 백그라운드 대기를 준비하지 못했습니다. iOS 설정에서 확인하세요."
+                refreshAuthorizationPresentation()
+                return false
+            case .notDetermined:
+                break
+            }
+            if ProcessInfo.processInfo.systemUptime >= deadline {
+                status = "위치 권한 선택 또는 앱 화면 활성화를 확인하지 못했습니다. 권한을 확인한 뒤 홈에서 연결을 다시 준비하세요."
+                return false
+            }
+            do { try await Task.sleep(nanoseconds: 200_000_000) }
+            catch { return false }
+        }
+        return false
+    }
+
+    private var backgroundPermissionAuthorization: AirRecordBackgroundPermissionPolicy.Authorization {
+        switch permissionManager.authorizationStatus {
+        case .notDetermined: return .notDetermined
+        case .authorizedWhenInUse, .authorizedAlways: return .authorized
+        case .denied: return .denied
+        case .restricted: return .restricted
+        @unknown default: return .unknown
         }
     }
 
@@ -197,7 +279,22 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         // the main actor, and never create or revive a runtime session here.
         Task { @MainActor [weak self] in
             guard let self else { return }
+            let wasBackgroundRequest = self.backgroundPermissionRequestPending
             self.refreshAuthorizationPresentation()
+            // Permission-only completion changes presentation, never execution.
+            // A stop invalidates this intent before a late callback can act.
+            if wasBackgroundRequest && self.backgroundPermissionAuthorization != .notDetermined {
+                self.backgroundPermissionRequestPending = false
+                if self.isEnabled && self.policy.session == nil {
+                    if self.backgroundPermissionAuthorization == .authorized {
+                        self.status = "위치 권한을 확인했습니다. 연결 준비 후 백그라운드 대기를 시작할 수 있습니다."
+                    } else {
+                        self.authorizationHint = "iOS 설정에서 위치 권한을 확인하세요. 앱에서 권한 창을 반복 표시하지 않습니다."
+                        self.status = "기본 위치 권한이 없어 백그라운드 대기를 준비하지 못했습니다. iOS 설정에서 확인하세요."
+                        self.refreshAuthorizationPresentation()
+                    }
+                }
+            }
             if let id = self.policy.session {
                 self.authorizationChanged(for: id)
             }
@@ -425,6 +522,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     }
 
     private func endSession() {
+        backgroundPermissionRequestPending = false
         policy.stop()
         isRunning = false
         updatesStarted = false
