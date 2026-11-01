@@ -25,12 +25,18 @@ struct iCTRLApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                #if CALLTAP_AUTOMATION
+            Group {
+                #if CALLTAP_AUTOMATION && CALLTAP_RAWAX
                 CallTapMainView()
                 #else
-                SettingsView()
-                    .environmentObject(appState)
+                NavigationStack {
+                    #if CALLTAP_AUTOMATION
+                    CallTapMainView()
+                    #else
+                    SettingsView()
+                        .environmentObject(appState)
+                    #endif
+                }
                 #endif
             }
             .environmentObject(appState)
