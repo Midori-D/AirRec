@@ -9,7 +9,7 @@ xcodebuild build -project iCTRL.xcodeproj -scheme CallTapRawAX -configuration Re
   -derivedDataPath build/rawax-ios -destination 'generic/platform=iOS' ARCHS=arm64 \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS='CALLTAP_AUTOMATION CALLTAP_RAWAX' \
-  MARKETING_VERSION=1.1.8 CURRENT_PROJECT_VERSION=12
+  MARKETING_VERSION=1.1.8 CURRENT_PROJECT_VERSION=13
 APP="$ROOT/build/rawax-ios/Build/Products/Release-iphoneos/iCTRL.app"
 [[ -d "$APP" ]] || { echo "App bundle missing" >&2; exit 1; }
 # This target must remain a normal app with no XCTest dependency or test plugin.
@@ -32,4 +32,4 @@ cp -R "$APP" "$PAYLOAD/Payload/"
 rm -f -- "$ROOT/release/CallTap-AX-unsigned.ipa"
 (cd "$PAYLOAD" && zip -qr "$ROOT/release/CallTap-AX-unsigned.ipa" Payload)
 python3 Scripts/verify-calltap-ax-ipa.py release/CallTap-AX-unsigned.ipa
-echo 'AirRecord 1.1.8 build 12 packaged; native Liquid Glass tabs, opt-in location standby, no Helper extension.'
+echo 'AirRecord 1.1.8 build 13 packaged; native Liquid Glass tabs, opt-in location standby, no Helper extension.'
