@@ -1,58 +1,51 @@
 // Copyright 2026 AirRecord contributors. SPDX-License-Identifier: Apache-2.0
-#if AIRRECORD_AUTOMATION
+#if AIRRECORD_AUTOMATION // AIRRECORD_AUTOMATION 조건이 있을 경우 아래 코드를 빌드에 포함함
 import SwiftUI
 import UIKit
 
 @MainActor
 struct AirRecordShortcutStatusView: View {
+    enum Kind { case outgoing, end }
+
     let accent: Color
+    var kind: Kind = .outgoing
     @StateObject private var presence = AirRecordShortcutPresence.shared
     @State private var openingError: String?
 
-    private var statusText: String {
-        if let found = presence.lastNameCheckFound {
-            return found ? "목록에서 확인됨" : "마지막 목록에서 찾지 못함"
+    private var lastActionRunAt: Date? {
+        switch kind {
+        case .outgoing: return presence.lastActionRunAt
+        case .end: return presence.lastEndActionRunAt
         }
-        return presence.lastActionRunAt == nil ? "연결 확인 필요" : "발신 동작 연결 확인됨"
     }
 
-    private var statusSymbol: String {
-        if let found = presence.lastNameCheckFound { return found ? "checkmark.circle.fill" : "xmark.circle" }
-        return presence.lastActionRunAt == nil ? "questionmark.circle" : "checkmark.circle"
+    private var title: String {
+        kind == .outgoing ? "AirRecord 발신 자동화" : "AirRecord 종료 자동화"
+    }
+
+    private var systemImage: String {
+        kind == .outgoing ? "phone.arrow.up.right" : "phone.down.fill"
     }
 
     var body: some View {
         AirRecordCard {
-            AirRecordHeading("AirRecord(발신)", systemImage: "square.stack.3d.up", tint: accent)
-            Label(statusText, systemImage: statusSymbol)
-                .font(.subheadline.weight(.medium))
-            if let checked = presence.lastNameCheckAt {
-                Text("목록 확인: \(checked.formatted(date: .abbreviated, time: .shortened))")
+            AirRecordStatusRow(title: title, systemImage: systemImage,
+                               isConfirmed: lastActionRunAt != nil, accent: accent,
+                               accessibilityValue: lastActionRunAt == nil ? "동작 실행 기록 없음" : "동작 실행 기록 확인됨")
+            if let used = lastActionRunAt {
+                Text("최근 동작 실행: \(used.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("단축어 동작을 실행하면 체크가 표시됩니다.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if let used = presence.lastActionRunAt {
-                Text("발신 동작 실행: \(used.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption).foregroundStyle(.secondary)
+            if kind == .outgoing {
+                Button("단축어 열기", systemImage: "arrow.up.forward.app") { openShortcut() }
+                    .font(.subheadline.weight(.semibold))
             }
-            if presence.lastNameCheckFound == nil && presence.lastActionRunAt != nil {
-                Text("최근 실행 기준 · 단축어 이름은 아직 확인하지 않았습니다.")
-                    .font(.caption).foregroundStyle(.secondary)
+            if let openingError {
+                Text(openingError).font(.footnote).foregroundStyle(.orange)
             }
-            Button("단축어 열기", systemImage: "arrow.up.forward.app") { openShortcut() }
-                .font(.subheadline.weight(.semibold))
-            if let note = presence.verificationNote ?? openingError {
-                Text(note).font(.footnote).foregroundStyle(.orange)
-            }
-            DisclosureGroup("이름 확인 방법") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("확인용 단축어를 아래 세 동작으로 만들어 한 번 실행하세요.")
-                    Text("1. 나의 단축어 가져오기\n2. 이름 가져오기\n3. AirRecord · 단축어 목록 확인")
-                    Text("‘단축어 이름 목록’에 바로 앞의 이름 결과를 연결합니다. AirRecord(발신)이 있는지 확인한 시각과 결과만 저장합니다.")
-                    Text("앱이 단축어 목록을 직접 읽는 방식이 아니므로, 단축어를 삭제하거나 이름을 바꿨다면 다시 확인하세요. 전체 이름 목록은 저장하지 않습니다.")
-                }
-                .font(.footnote).foregroundStyle(.secondary).padding(.top, 6)
-            }
-            .font(.subheadline)
         }
     }
 

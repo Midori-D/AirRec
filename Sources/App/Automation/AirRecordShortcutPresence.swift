@@ -11,12 +11,14 @@ final class AirRecordShortcutPresence: ObservableObject {
     static let targetName = "AirRecord(발신)"
 
     @Published private(set) var lastActionRunAt: Date?
+    @Published private(set) var lastEndActionRunAt: Date?
     @Published private(set) var lastNameCheckAt: Date?
     @Published private(set) var lastNameCheckFound: Bool?
     @Published private(set) var verificationNote: String?
 
     private let defaults: UserDefaults
     private static let actionKey = "AirRecord.shortcuts.outgoing.lastActionRunAt"
+    private static let endActionKey = "AirRecord.shortcuts.callEnd.lastActionRunAt"
     private static let checkKey = "AirRecord.shortcuts.outgoing.lastNameCheckAt"
     private static let foundKey = "AirRecord.shortcuts.outgoing.lastNameCheckFound"
 
@@ -24,6 +26,7 @@ final class AirRecordShortcutPresence: ObservableObject {
         self.defaults = defaults
         let checkedAt = defaults.object(forKey: Self.checkKey) as? Date
         lastActionRunAt = defaults.object(forKey: Self.actionKey) as? Date
+        lastEndActionRunAt = defaults.object(forKey: Self.endActionKey) as? Date
         lastNameCheckAt = checkedAt
         lastNameCheckFound = checkedAt == nil ? nil : defaults.object(forKey: Self.foundKey) as? Bool
     }
@@ -32,6 +35,12 @@ final class AirRecordShortcutPresence: ObservableObject {
         let now = Date()
         lastActionRunAt = now
         defaults.set(now, forKey: Self.actionKey)
+    }
+
+    func recordEndActionRun() {
+        let now = Date()
+        lastEndActionRunAt = now
+        defaults.set(now, forKey: Self.endActionKey)
     }
 
     @discardableResult

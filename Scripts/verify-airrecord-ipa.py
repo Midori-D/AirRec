@@ -17,7 +17,7 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.calltap.prototype.ictrl':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.2.2' or str(info.get('CFBundleVersion')) != '21':
+        if info.get('CFBundleShortVersionString') != '1.2.3' or str(info.get('CFBundleVersion')) != '22':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRecord':
             raise ValueError('Unexpected app display name.')
@@ -29,6 +29,8 @@ def verify(path):
             raise ValueError('The location standby app must not contain Helper extensions.')
         if info.get('UIBackgroundModes') != ['location']:
             raise ValueError('Only the location background mode may be declared.')
+        if info.get('NSSupportsLiveActivities') is not True:
+            raise ValueError('System progress display for long-running call-end intent is not enabled.')
         usage = info.get('NSLocationWhenInUseUsageDescription')
         if not isinstance(usage, str) or not all(word in usage for word in ('백그라운드', '저장', '전송')):
             raise ValueError('Location standby privacy explanation missing.')
@@ -53,6 +55,8 @@ def verify(path):
             raise ValueError('Outgoing call wait intent metadata missing.')
         if not any(b'VerifyAirRecordShortcutCatalogIntent' in archive.read(name) for name in metadata):
             raise ValueError('Shortcut catalog verification intent metadata missing.')
+        if not any(b'WaitForAirRecordCallEndIntent' in archive.read(name) for name in metadata):
+            raise ValueError('Call-end wait intent metadata missing.')
         if any(name.endswith('embedded.mobileprovision') or '.xctest/' in name for name in names):
             raise ValueError('Profiles and XCTest plugins must not be distributed.')
         count = 0
@@ -87,7 +91,7 @@ def verify(path):
             count += 1
         if count < 1 or prefix+info['CFBundleExecutable'] not in names:
             raise ValueError('Main executable missing.')
-        print(f'PASS: AirRecord 1.2.2 (21), location standby permission, AppIcon, outgoing/catalog/existing Shortcut intents, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
+        print(f'PASS: AirRecord 1.2.3 (22), location standby permission, AppIcon, outgoing/call-end/catalog/existing Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])

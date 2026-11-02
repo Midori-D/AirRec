@@ -75,6 +75,7 @@ struct AirRecordGlassView: View {
             monitoringCard
             standbySummary
             AirRecordShortcutStatusView(accent: accent)
+            AirRecordShortcutStatusView(accent: accent, kind: .end)
         }
         .navigationTitle("AirRecord")
         .navigationBarTitleDisplayMode(.inline)
@@ -160,17 +161,9 @@ struct AirRecordGlassView: View {
 
     private var standbySummary: some View {
         AirRecordCard {
-            HStack(alignment: .firstTextBaseline) {
-                Text("백그라운드 AirRecord")
-                    .font(.headline)
-                Spacer(minLength: 8)
-                Image(systemName: standby.isRunning && monitor.isRunning ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(standby.isRunning && monitor.isRunning ? Color.green : Color.secondary)
-                    .accessibilityHidden(true)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("백그라운드 AirRecord")
-            .accessibilityValue(standby.isRunning && monitor.isRunning ? "활성화됨" : "비활성화됨")
+            AirRecordStatusRow(title: "백그라운드 AirRecord", systemImage: "location.fill",
+                               isConfirmed: standby.isRunning && monitor.isRunning, accent: accent,
+                               accessibilityValue: standby.isRunning && monitor.isRunning ? "활성화됨" : "비활성화됨")
         }
     }
 
@@ -461,6 +454,30 @@ struct AirRecordHeading: View {
         Label(title, systemImage: systemImage)
             .font(.subheadline.weight(.semibold)).foregroundStyle(tint)
             .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Home status cards share typography and spacing without adding card padding.
+struct AirRecordStatusRow: View {
+    let title: String
+    let systemImage: String
+    let isConfirmed: Bool
+    let accent: Color
+    let accessibilityValue: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: systemImage).accessibilityHidden(true)
+            Text(title)
+            Spacer(minLength: 8)
+            Image(systemName: isConfirmed ? "checkmark.circle.fill" : "circle")
+                .accessibilityHidden(true)
+        }
+        .font(.headline).foregroundStyle(accent)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 

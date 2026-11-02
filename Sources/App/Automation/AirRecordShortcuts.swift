@@ -8,6 +8,42 @@ private struct AirRecordShortcutError: LocalizedError {
     var errorDescription: String? { message }
 }
 
+/// Bridges the system's synchronous cancellation callback to this invocation's
+/// observer task, including cancellation before that task is installed.
+private final class AirRecordCallEndIntentTask: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<Bool, Never>?
+    private var cancelled = false
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    func install(_ task: Task<Bool, Never>) {
+        lock.lock()
+        self.task = task
+        let shouldCancel = cancelled
+        lock.unlock()
+        if shouldCancel { task.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let pending = task
+        lock.unlock()
+        pending?.cancel()
+    }
+
+    func clear() {
+        lock.lock()
+        task = nil
+        lock.unlock()
+    }
+}
+
 /// Resumes the user's existing auto-start choice from a Shortcuts automation.
 /// Kept in the main app process so it shares the UI's observer and reservations.
 struct ResumeAirRecordMonitoringIntent: AppIntent {
@@ -69,6 +105,65 @@ struct WaitForAirRecordOutgoingCallIntent: AppIntent {
     }
 }
 
+/// Observes completion; never hangs up or changes cellular data itself.
+struct WaitForAirRecordCallEndIntent: LongRunningIntent, CancellableIntent {
+    static var title: LocalizedStringResource = "통화 종료"
+    static var description: IntentDescription = "진행 중인 모든 통화가 끝날 때까지 기다립니다. 이미 통화가 없으면 즉시 참, 시간 초과·중단이면 거짓을 반환합니다. 기본 60분, 최대 180분이며 대기 중 시스템 진행 표시가 나타납니다. 다음에 셀룰러 데이터 켜기를 연결하세요. 통화를 직접 끊지는 않습니다."
+    static var supportedModes: IntentModes { [.background] }
+    static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
+
+    @Parameter(title: "최대 대기 시간(분)", default: 60)
+    var waitMinutes: Int
+
+    @MainActor
+    func perform() async -> some IntentResult & ReturnsValue<Bool> {
+        AirRecordShortcutPresence.shared.recordEndActionRun()
+        let seconds = AirRecordCallEndWaitPolicy.boundedTimeout(TimeInterval(waitMinutes) * 60)
+        let displayProgress = progress
+        displayProgress.totalUnitCount = Int64(seconds.rounded(.up))
+        displayProgress.completedUnitCount = 0
+        displayProgress.localizedDescription = "통화 종료 대기"
+        displayProgress.localizedAdditionalDescription = "모든 통화가 끝나면 다음 동작을 실행합니다."
+        let cancellation = AirRecordCallEndIntentTask()
+        defer { cancellation.clear() }
+        airRecordLog("Call end wait intent: started")
+        do {
+            let ended = try await performBackgroundTask {
+                let pending = Task { @MainActor in
+                    guard !Task.isCancelled, !cancellation.isCancelled else { return false }
+                    return await AirRecordCallEndWaiter.wait(timeout: seconds) { elapsed in
+                        // Progress measures elapsed observation time, not the
+                        // unknown duration or completion percentage of a call.
+                        displayProgress.completedUnitCount = min(
+                            displayProgress.totalUnitCount, Int64(max(0, elapsed).rounded(.down)))
+                        displayProgress.localizedAdditionalDescription = "경과 \(Int(elapsed))초 · 최대 \(Int(seconds / 60))분 대기"
+                    }
+                }
+                cancellation.install(pending)
+                let value = await withTaskCancellationHandler {
+                    await pending.value
+                } onCancel: {
+                    cancellation.cancel()
+                }
+                cancellation.clear()
+                return value && !cancellation.isCancelled && !Task.isCancelled
+            } onCancel: { _ in
+                cancellation.cancel()
+            }
+            let confirmed = ended && !cancellation.isCancelled && !Task.isCancelled
+            displayProgress.localizedDescription = confirmed ? "통화 종료 확인됨" : "통화 종료 대기 중단됨"
+            if confirmed { displayProgress.completedUnitCount = displayProgress.totalUnitCount }
+            airRecordLog("Call end wait intent: result=\(confirmed)")
+            return .result(value: confirmed)
+        } catch {
+            cancellation.cancel()
+            displayProgress.localizedDescription = "통화 종료 대기 중단됨"
+            airRecordLog("Call end wait intent: interrupted")
+            return .result(value: false)
+        }
+    }
+}
+
 struct VerifyAirRecordShortcutCatalogIntent: AppIntent {
     static var title: LocalizedStringResource = "단축어 목록 확인"
     static var description: IntentDescription = "나의 단축어 가져오기 → 이름 가져오기의 결과를 전달하면 AirRecord(발신) 이름이 있는지 확인합니다. 확인 결과와 시각만 저장합니다."
@@ -104,6 +199,12 @@ struct AirRecordShortcuts: AppShortcutsProvider {
             phrases: ["\(.applicationName) 통화 발신"],
             shortTitle: "통화 발신",
             systemImageName: "phone.arrow.up.right"
+        )
+        AppShortcut(
+            intent: WaitForAirRecordCallEndIntent(),
+            phrases: ["\(.applicationName) 통화 종료"],
+            shortTitle: "통화 종료",
+            systemImageName: "phone.down"
         )
         AppShortcut(
             intent: VerifyAirRecordShortcutCatalogIntent(),

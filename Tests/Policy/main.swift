@@ -669,4 +669,75 @@ do {
           "cleanup and cancellation after automatic OFF cannot reapply a finished failure")
 }
 
-print("AirRecordPolicy: call safety, lease recovery, bounded IPC, permissions, waits and activation failure ownership passed")
+do {
+    typealias Wait = AirRecordCallEndWaitPolicy
+    let active = Wait.Call(hasEnded: false)
+    let ended = Wait.Call(hasEnded: true)
+
+    check(Wait.defaultTimeout == 3600 && Wait.maximumTimeout == 10800,
+          "call-end waits have a one-hour default and three-hour maximum")
+    check(Wait.boundedTimeout(0) == 1 && Wait.boundedTimeout(-10) == 1
+          && Wait.boundedTimeout(20000) == 10800 && Wait.boundedTimeout(180) == 180,
+          "call-end wait timeouts remain positive, finite, and bounded")
+    check(Wait.boundedTimeout(.nan) == 3600 && Wait.boundedTimeout(.infinity) == 3600,
+          "invalid call-end timeout input falls back to a finite default")
+
+    var betweenSteps = Wait(startedAt: 100, timeout: 3600)
+    check(betweenSteps.decision(now: 100, calls: []) == .finished(.noActiveCalls),
+          "a call already ended between Shortcuts steps returns true immediately")
+    check(betweenSteps.decision(now: 101, calls: [active], cancelled: true) == .finished(.noActiveCalls),
+          "a finished call-end policy does not change after a late call or cancellation")
+    var endedOnly = Wait(startedAt: 100, timeout: 3600)
+    check(endedOnly.decision(now: 100, calls: [ended, ended]) == .finished(.noActiveCalls),
+          "stale ended CallKit entries do not keep a call-end wait alive")
+
+    var session = Wait(startedAt: 100, timeout: 3600)
+    check(session.decision(now: 100, calls: [active]) == .waiting,
+          "an active call blocks completion regardless of connection, direction, or hold state")
+    check(session.decision(now: 101, calls: [active, active]) == .waiting,
+          "call waiting or multiple active calls keep the call-end request pending")
+    check(session.decision(now: 102, calls: [ended, active]) == .waiting,
+          "ending one call cannot restore data while a second call remains")
+    check(session.decision(now: 103, calls: [active]) == .waiting,
+          "a replacement active call blocks completion without relying on stale identifiers")
+    check(session.decision(now: 104, calls: [ended]) == .finished(.noActiveCalls),
+          "the wait completes only after every observed active call is gone or ended")
+
+    var before = Wait(startedAt: 100, timeout: 180)
+    check(before.decision(now: 279.999, calls: []) == .finished(.noActiveCalls),
+          "a zero-call observation before the call-end deadline may succeed")
+    var boundary = Wait(startedAt: 100, timeout: 180)
+    check(boundary.decision(now: 280, calls: []) == .finished(.timedOut),
+          "zero calls exactly at the call-end deadline cannot turn a timeout into success")
+    check(boundary.decision(now: 281, calls: []) == .finished(.timedOut),
+          "a late delegate event leaves a timed-out call-end request terminal")
+    var suspended = Wait(startedAt: 100, timeout: 180)
+    check(suspended.decision(now: 300, calls: [active]) == .finished(.timedOut),
+          "suspension and delayed timers cannot extend the original call-end deadline")
+
+    var cancelled = Wait(startedAt: 100, timeout: 3600)
+    check(cancelled.decision(now: 101, calls: [], cancelled: true) == .finished(.cancelled),
+          "call-end cancellation takes precedence over an empty simultaneous snapshot")
+    var independent = Wait(startedAt: 101, timeout: 3600)
+    check(independent.decision(now: 102, calls: []) == .finished(.noActiveCalls),
+          "cancelling one call-end wait does not alter another request")
+    check(cancelled.decision(now: 103, calls: []) == .finished(.cancelled),
+          "a late callback cannot revive the cancelled call-end wait")
+
+    var clock = Wait(startedAt: 100, timeout: 3600)
+    _ = clock.decision(now: 105, calls: [active])
+    check(clock.decision(now: 104, calls: []) == .finished(.invalidClock),
+          "backwards monotonic time cannot produce a false call-end success")
+    var invalid = Wait(startedAt: .nan, timeout: 3600)
+    check(invalid.decision(now: 100, calls: []) == .finished(.invalidClock),
+          "an invalid initial clock cannot complete a call-end wait")
+    var negative = Wait(startedAt: -1, timeout: 3600)
+    check(negative.decision(now: 100, calls: []) == .finished(.invalidClock),
+          "an invalid negative starting clock cannot complete a call-end wait")
+    for result in [Wait.Result.cancelled, .timedOut, .invalidClock] {
+        check(!result.allCallsEnded, "only verified absence of active calls maps to true")
+    }
+    check(Wait.Result.noActiveCalls.allCallsEnded, "no active calls maps to true")
+}
+
+print("AirRecordPolicy: call safety, lease recovery, bounded IPC, permissions, waits, call-end waits and activation failure ownership passed")
