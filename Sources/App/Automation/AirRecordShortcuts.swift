@@ -48,6 +48,26 @@ struct WaitForAirRecordRecordingIntent: AppIntent {
     }
 }
 
+/// A CallKit observation only; the shortcut chooses what to do with the Bool.
+struct WaitForAirRecordOutgoingCallIntent: AppIntent {
+    static var title: LocalizedStringResource = "통화 발신 대기"
+    static var description: IntentDescription = "발신이 시작될 때까지 기본 20초, 최대 25초 기다립니다. 이미 단일 발신 중이면 즉시 참을, 발신 없이 시간이 지나면 거짓을 반환합니다. FaceTime 등 CallKit 발신도 감지될 수 있습니다."
+    static var supportedModes: IntentModes { [.background] }
+    static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
+
+    @Parameter(title: "최대 대기 시간(초)", default: 20)
+    var waitSeconds: Int
+
+    @MainActor
+    func perform() async -> some IntentResult & ReturnsValue<Bool> {
+        airRecordLog("Outgoing wait intent: started")
+        let outgoing = await AirRecordOutgoingCallWaiter.wait(timeout: TimeInterval(waitSeconds))
+        let detected = outgoing && !Task.isCancelled
+        airRecordLog("Outgoing wait intent: result=\(detected)")
+        return .result(value: detected)
+    }
+}
+
 struct AirRecordShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -61,6 +81,12 @@ struct AirRecordShortcuts: AppShortcutsProvider {
             phrases: ["\(.applicationName) 녹음 시작 대기"],
             shortTitle: "녹음 시작 대기",
             systemImageName: "phone.badge.waveform"
+        )
+        AppShortcut(
+            intent: WaitForAirRecordOutgoingCallIntent(),
+            phrases: ["\(.applicationName) 통화 발신 대기"],
+            shortTitle: "통화 발신 대기",
+            systemImageName: "phone.arrow.up.right"
         )
     }
 }

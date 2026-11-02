@@ -570,4 +570,77 @@ do {
           "a backwards monotonic clock cannot extend or complete a recording wait")
 }
 
-print("AirRecordPolicy: call safety, lease recovery, bounded IPC, location permissions and bounded recording waits passed")
+do {
+    typealias Wait = AirRecordOutgoingWaitPolicy
+    let outgoing = Wait.Call(isOutgoing: true, hasEnded: false, isOnHold: false)
+    let incoming = Wait.Call(isOutgoing: false, hasEnded: false, isOnHold: false)
+    let ended = Wait.Call(isOutgoing: true, hasEnded: true, isOnHold: false)
+    let held = Wait.Call(isOutgoing: true, hasEnded: false, isOnHold: true)
+
+    check(Wait.boundedTimeout(0) == 1 && Wait.boundedTimeout(-10) == 1
+          && Wait.boundedTimeout(1000) == 25 && Wait.boundedTimeout(20) == 20,
+          "outgoing waits clamp finite timeouts to one through twenty-five seconds")
+    check(Wait.boundedTimeout(.nan) == 20 && Wait.boundedTimeout(.infinity) == 20,
+          "outgoing waits use a finite twenty-second default for invalid timeouts")
+    var existing = Wait(startedAt: 100, timeout: 20)
+    check(existing.decision(now: 100, calls: [outgoing]) == .finished(.outgoing),
+          "an existing single outgoing call immediately satisfies a new wait without requiring connection")
+    check(existing.decision(now: 101, calls: [], cancelled: true) == .finished(.outgoing),
+          "a completed request is immutable when late cancellation or callbacks arrive")
+
+    var direction = Wait(startedAt: 100, timeout: 20)
+    check(direction.decision(now: 100, calls: []) == .waiting,
+          "absence of a call waits for an event")
+    check(direction.decision(now: 101, calls: [incoming]) == .waiting,
+          "an incoming call never counts as an outgoing call")
+    check(direction.decision(now: 102, calls: [ended, incoming]) == .waiting,
+          "a stale ended outgoing call alongside an incoming call cannot satisfy the wait")
+    check(direction.decision(now: 103, calls: [ended]) == .waiting,
+          "an ended outgoing call alone cannot satisfy the wait")
+    check(direction.decision(now: 104, calls: [ended, outgoing]) == .finished(.outgoing),
+          "ended calls do not make a genuinely single active outgoing call ambiguous")
+
+    var multiple = Wait(startedAt: 100, timeout: 20)
+    check(multiple.decision(now: 101, calls: [outgoing, incoming]) == .finished(.multipleCalls),
+          "call waiting or multiple active calls fail conservatively")
+    check(multiple.decision(now: 102, calls: [outgoing]) == .finished(.multipleCalls),
+          "a late single-call snapshot cannot revive a completed ambiguous request")
+    var onHold = Wait(startedAt: 100, timeout: 20)
+    check(onHold.decision(now: 101, calls: [held]) == .finished(.held),
+          "a held outgoing call fails rather than reporting a new usable outgoing call")
+
+    var before = Wait(startedAt: 100, timeout: 20)
+    check(before.decision(now: 119.999, calls: [outgoing]) == .finished(.outgoing),
+          "an outgoing observation before the monotonic deadline may succeed")
+    var boundary = Wait(startedAt: 100, timeout: 20)
+    check(boundary.decision(now: 120, calls: [outgoing]) == .finished(.timedOut),
+          "an outgoing observation exactly at the deadline is already too late")
+    check(boundary.decision(now: 121, calls: [outgoing]) == .finished(.timedOut),
+          "a delayed delegate event cannot change a timeout into success")
+    var delayed = Wait(startedAt: 100, timeout: 20)
+    check(delayed.decision(now: 130, calls: [outgoing]) == .finished(.timedOut),
+          "suspension or a delayed timer never extends the original wait deadline")
+
+    var cancelled = Wait(startedAt: 100, timeout: 20)
+    check(cancelled.decision(now: 101, calls: [outgoing], cancelled: true) == .finished(.cancelled),
+          "observed cancellation takes precedence over simultaneous outgoing evidence")
+    var independent = Wait(startedAt: 101, timeout: 20)
+    check(independent.decision(now: 102, calls: [outgoing]) == .finished(.outgoing),
+          "a separate request remains independent of another request's cancellation")
+    check(cancelled.decision(now: 103, calls: [outgoing]) == .finished(.cancelled),
+          "an old request's late event stays terminal while a newer request succeeds")
+
+    var clock = Wait(startedAt: 100, timeout: 20)
+    _ = clock.decision(now: 105, calls: [])
+    check(clock.decision(now: 104, calls: [outgoing]) == .finished(.invalidClock),
+          "backwards monotonic time cannot yield outgoing success")
+    var invalid = Wait(startedAt: .nan, timeout: 20)
+    check(invalid.decision(now: 100, calls: [outgoing]) == .finished(.invalidClock),
+          "an invalid initial clock cannot create an unbounded or successful wait")
+    for result in [Wait.Result.multipleCalls, .held, .cancelled, .timedOut, .invalidClock] {
+        check(!result.detectedOutgoing, "only the outgoing terminal result maps to true")
+    }
+    check(Wait.Result.outgoing.detectedOutgoing, "outgoing evidence maps to true")
+}
+
+print("AirRecordPolicy: call safety, lease recovery, bounded IPC, location permissions, recording and outgoing waits passed")

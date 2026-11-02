@@ -4,6 +4,7 @@ AIRRECORD_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AIRRECORD_TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$AIRRECORD_TEST_DIR"' EXIT
 swiftc "$AIRRECORD_ROOT/Sources/Core/Automation/AirRecordPolicy.swift" \
+  "$AIRRECORD_ROOT/Sources/Core/Automation/AirRecordOutgoingWaitPolicy.swift" \
   "$AIRRECORD_ROOT/Tests/LegacySupport/Swift/AirRecordKeepAliveLease.swift" \
   "$AIRRECORD_ROOT/Tests/LegacySupport/Swift/AirRecordKeepAliveWire.swift" \
   "$AIRRECORD_ROOT/Sources/Core/Background/AirRecordLocationSessionPolicy.swift" \

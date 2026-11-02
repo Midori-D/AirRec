@@ -27,7 +27,7 @@ struct AirRecordGlassView: View {
         let info = Bundle.main.infoDictionary ?? [:]
         let name = info["CFBundleShortVersionString"] as? String ?? "—"
         let build = info["CFBundleVersion"] as? String ?? "—"
-        return "Ver \(name) 빌드 \(build) - 알파"
+        return "Ver v\(name) 빌드 \(build) - 알파"
     }
 
     var body: some View {
@@ -344,14 +344,13 @@ struct AirRecordGlassView: View {
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
             .font(.subheadline)
-            DisclosureGroup("셀룰러 자동화 · 실험") {
+            DisclosureGroup("통화 발신 대기 · 먼저 시험하기") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("셀룰러 데이터를 수동으로 끈 상태에서 확인한 실험 기능입니다. Wi-Fi 없이 사용할 때 아래 순서로 전화 앱 열기 자동화를 만드세요.")
-                    Text("1. 셀룰러 데이터 끄기\n2. LocalDevVPN 연결\n3. AirRecord · 녹음 시작 대기\n4. 셀룰러 데이터 켜기")
-                    Text("‘녹음 시작 대기’가 감시 재개도 함께 처리합니다. 홈에서 AirRecord를 활성화하고 백그라운드 위치 대기를 먼저 준비하세요.")
-                    Text("녹음 처리 결과나 통화 종료를 확인하면 다음 동작으로 넘어갑니다. 기본 대기는 45초이며 1~60초로 제한됩니다. 실패나 시간 초과도 결과를 반환합니다.")
-                    Text("대기 중에는 모바일 인터넷이 끊깁니다. 자동화를 직접 중단하거나 iOS가 종료하면 마지막 데이터 켜기가 실행되지 않을 수 있으므로 직접 다시 켜 주세요.")
-                    Text("자동 복구와 복구 후 녹음 유지는 새 버전의 첫 통화에서 확인해야 합니다. 이 자동화는 전화 수신 자체를 감지하지 않습니다.")
+                    Text("새 동작 ‘통화 발신 대기’는 기본 20초, 최대 25초 동안 발신 시작을 기다립니다. 발신하면 참, 발신 없이 시간이 지나면 거짓을 반환합니다.")
+                    Text("이미 단일 발신 중이면 즉시 참을 반환합니다. FaceTime 등 CallKit을 사용하는 통화 앱의 발신도 감지될 수 있습니다.")
+                    Text("단축어에서 AirRecord의 ‘통화 발신 대기’를 추가하고, 결과를 알림으로 표시해 먼저 시험하세요. 조건문은 ‘발신 대기 결과가 참’일 때 다음 동작을 실행하도록 설정합니다.")
+                    Text("발신 대기 시험에는 VPN·페어링·위치 대기나 홈의 AirRecord 활성화가 필요하지 않습니다. 이 동작 자체는 데이터를 끄거나 녹음을 시작하지 않습니다.")
+                    Text("전화 앱 열기 → VPN 연결은 기존 자동화를 사용하세요. 이번 버전은 발신 대기부터 확인하는 단계이며, 통화 종료 대기는 아직 제공하지 않습니다.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
