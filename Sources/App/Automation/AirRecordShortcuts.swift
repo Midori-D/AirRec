@@ -50,7 +50,7 @@ struct WaitForAirRecordRecordingIntent: AppIntent {
 
 /// A CallKit observation only; the shortcut chooses what to do with the Bool.
 struct WaitForAirRecordOutgoingCallIntent: AppIntent {
-    static var title: LocalizedStringResource = "통화 발신 대기"
+    static var title: LocalizedStringResource = "통화 발신"
     static var description: IntentDescription = "발신이 시작될 때까지 기본 20초, 최대 25초 기다립니다. 이미 단일 발신 중이면 즉시 참을, 발신 없이 시간이 지나면 거짓을 반환합니다. FaceTime 등 CallKit 발신도 감지될 수 있습니다."
     static var supportedModes: IntentModes { [.background] }
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
@@ -60,11 +60,28 @@ struct WaitForAirRecordOutgoingCallIntent: AppIntent {
 
     @MainActor
     func perform() async -> some IntentResult & ReturnsValue<Bool> {
+        AirRecordShortcutPresence.shared.recordActionRun()
         airRecordLog("Outgoing wait intent: started")
         let outgoing = await AirRecordOutgoingCallWaiter.wait(timeout: TimeInterval(waitSeconds))
         let detected = outgoing && !Task.isCancelled
         airRecordLog("Outgoing wait intent: result=\(detected)")
         return .result(value: detected)
+    }
+}
+
+struct VerifyAirRecordShortcutCatalogIntent: AppIntent {
+    static var title: LocalizedStringResource = "단축어 목록 확인"
+    static var description: IntentDescription = "나의 단축어 가져오기 → 이름 가져오기의 결과를 전달하면 AirRecord(발신) 이름이 있는지 확인합니다. 확인 결과와 시각만 저장합니다."
+    static var supportedModes: IntentModes { [.background] }
+    static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
+
+    @Parameter(title: "단축어 이름 목록")
+    var shortcutNames: [String]
+
+    @MainActor
+    func perform() async -> some IntentResult & ReturnsValue<Bool> {
+        guard !Task.isCancelled else { return .result(value: false) }
+        return .result(value: AirRecordShortcutPresence.shared.verify(names: shortcutNames))
     }
 }
 
@@ -84,9 +101,15 @@ struct AirRecordShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: WaitForAirRecordOutgoingCallIntent(),
-            phrases: ["\(.applicationName) 통화 발신 대기"],
-            shortTitle: "통화 발신 대기",
+            phrases: ["\(.applicationName) 통화 발신"],
+            shortTitle: "통화 발신",
             systemImageName: "phone.arrow.up.right"
+        )
+        AppShortcut(
+            intent: VerifyAirRecordShortcutCatalogIntent(),
+            phrases: ["\(.applicationName) 단축어 목록 확인"],
+            shortTitle: "단축어 목록 확인",
+            systemImageName: "checklist"
         )
     }
 }

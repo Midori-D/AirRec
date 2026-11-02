@@ -74,13 +74,7 @@ struct AirRecordGlassView: View {
             brandHeader
             monitoringCard
             standbySummary
-            AirRecordCard {
-                AirRecordHeading("전화가 연결되면", systemImage: "phone.fill", tint: accent)
-                Text("더 보기 → 통화 녹음을 순서대로 누릅니다. 녹음과 저장은 아이폰의 기본 기능이 처리합니다.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                Text("첫 통화에서는 실제 녹음 타이머와 저장 결과를 확인해 주세요.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
+            AirRecordShortcutStatusView(accent: accent)
         }
         .navigationTitle("AirRecord")
         .navigationBarTitleDisplayMode(.inline)
@@ -120,7 +114,7 @@ struct AirRecordGlassView: View {
                         .font(.caption.weight(.medium)).foregroundStyle(.secondary)
                 }
             }
-            if monitor.isPreparing || (monitor.isEnabled && !monitor.isRunning) {
+            if monitor.activationError != nil || monitor.isPreparing || (monitor.isEnabled && !monitor.isRunning) {
                 Text(monitor.status)
                     .font(.subheadline).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -130,14 +124,15 @@ struct AirRecordGlassView: View {
     }
 
     private var monitoringTitle: String {
+        if monitor.activationError != nil { return "AirRecord 404 Error" }
         if monitor.isPreparing { return "AirRecord 연결 중" }
         if monitor.isRunning { return "AirRecord 활성화됨" }
-        return monitor.isEnabled ? "연결 필요" : "AirRecord 비활성화됨"
+        return monitor.isEnabled ? "AirRecord 404 Error" : "AirRecord 비활성화됨"
     }
 
     @ViewBuilder
     private var monitoringControls: some View {
-        if monitor.isRunning {
+        if monitor.isRunning && monitor.activationError == nil {
             Button(role: .destructive) { monitor.stop() } label: {
                 Label("AirRecord 비활성화", systemImage: "pause.fill")
                     .frame(maxWidth: .infinity)
@@ -155,7 +150,7 @@ struct AirRecordGlassView: View {
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
             .disabled(monitor.isPreparing)
-            if monitor.isEnabled || monitor.isPreparing {
+            if monitor.activationError == nil && monitor.isPreparing {
                 Button("AirRecord 비활성화", role: .destructive) { monitor.stop() }
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -165,36 +160,18 @@ struct AirRecordGlassView: View {
 
     private var standbySummary: some View {
         AirRecordCard {
-            AirRecordHeading("백그라운드 AirRecord", systemImage: "location.circle", tint: accent)
             HStack(alignment: .firstTextBaseline) {
-                Text(backgroundTitle)
+                Text("백그라운드 AirRecord")
                     .font(.headline)
                 Spacer(minLength: 8)
-                Image(systemName: standby.isRunning && monitor.isRunning ? "checkmark.circle.fill" : "circle.dashed")
+                Image(systemName: standby.isRunning && monitor.isRunning ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(standby.isRunning && monitor.isRunning ? Color.green : Color.secondary)
                     .accessibilityHidden(true)
             }
-            Text(backgroundSummary)
-                .font(.subheadline).foregroundStyle(.secondary)
-            Button { selectedTab = .settings } label: {
-                Label("백그라운드 설정 보기", systemImage: "arrow.up.right")
-            }
-            .font(.subheadline.weight(.semibold))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("백그라운드 AirRecord")
+            .accessibilityValue(standby.isRunning && monitor.isRunning ? "활성화됨" : "비활성화됨")
         }
-    }
-
-    private var backgroundTitle: String {
-        if standby.isRunning && monitor.isRunning { return "백그라운드 활성화됨" }
-        if !standby.isEnabled { return "백그라운드 비활성화" }
-        if monitor.isPreparing { return "백그라운드 준비 중" }
-        return monitor.isEnabled ? "백그라운드 연결 필요" : "백그라운드 설정 켜짐"
-    }
-
-    private var backgroundSummary: String {
-        if !standby.isEnabled { return "설정에서 백그라운드 AirRecord를 켤 수 있습니다." }
-        if !monitor.isEnabled { return "홈에서 AirRecord를 활성화하면 적용됩니다." }
-        if standby.isRunning && monitor.isRunning { return "백그라운드에서 통화 연결을 확인합니다." }
-        return "AirRecord 연결 상태를 확인해 주세요. 자세한 내용은 기록 탭에서 볼 수 있습니다."
     }
 
     private var settingsScreen: some View {

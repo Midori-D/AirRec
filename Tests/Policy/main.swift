@@ -643,4 +643,30 @@ do {
     check(Wait.Result.outgoing.detectedOutgoing, "outgoing evidence maps to true")
 }
 
-print("AirRecordPolicy: call safety, lease recovery, bounded IPC, location permissions, recording and outgoing waits passed")
+do {
+    typealias Failure = AirRecordActivationFailurePolicy
+    let previous = UUID(), current = UUID(), retry = UUID()
+    check(Failure.shouldDisable(request: current, currentRequest: current,
+                                isEnabled: true, cancelled: false),
+          "a confirmed current preparation failure disables its saved activation")
+    check(!Failure.shouldDisable(request: previous, currentRequest: current,
+                                 isEnabled: true, cancelled: false),
+          "an old preparation failure cannot disable a newer enabled activation")
+    check(!Failure.shouldDisable(request: current, currentRequest: current,
+                                 isEnabled: true, cancelled: true),
+          "cancelling the current preparation retains the saved preference instead of treating it as failure")
+    check(!Failure.shouldDisable(request: current, currentRequest: current,
+                                 isEnabled: false, cancelled: false),
+          "a late result after explicit OFF cannot overwrite the stopped state with an activation error")
+    check(!Failure.shouldDisable(request: current, currentRequest: retry,
+                                 isEnabled: true, cancelled: false),
+          "an automatic failure from before explicit retry cannot disable the new run")
+    check(Failure.shouldDisable(request: retry, currentRequest: retry,
+                                isEnabled: true, cancelled: false),
+          "a new retry owns its own confirmed failure transition")
+    check(!Failure.shouldDisable(request: retry, currentRequest: UUID(),
+                                 isEnabled: false, cancelled: true),
+          "cleanup and cancellation after automatic OFF cannot reapply a finished failure")
+}
+
+print("AirRecordPolicy: call safety, lease recovery, bounded IPC, permissions, waits and activation failure ownership passed")

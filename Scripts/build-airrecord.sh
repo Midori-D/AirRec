@@ -9,7 +9,7 @@ xcodebuild build -project AirRecord.xcodeproj -scheme AirRecord -configuration R
   -derivedDataPath build/airrecord-ios -destination 'generic/platform=iOS' ARCHS=arm64 \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS='AIRRECORD_AUTOMATION' \
-  MARKETING_VERSION=1.2.2 CURRENT_PROJECT_VERSION=20
+  MARKETING_VERSION=1.2.2 CURRENT_PROJECT_VERSION=21
 APP="$ROOT/build/airrecord-ios/Build/Products/Release-iphoneos/AirRecord.app"
 [[ -d "$APP" ]] || { echo "App bundle missing" >&2; exit 1; }
 # This target must remain a normal app with no XCTest dependency or test plugin.
@@ -32,4 +32,4 @@ cp -R "$APP" "$PAYLOAD/Payload/"
 rm -f -- "$ROOT/Extras/release/AirRecord-unsigned.ipa"
 (cd "$PAYLOAD" && zip -qr "$ROOT/Extras/release/AirRecord-unsigned.ipa" Payload)
 python3 Scripts/verify-airrecord-ipa.py Extras/release/AirRecord-unsigned.ipa
-echo 'AirRecord 1.2.2 build 20 packaged; independent outgoing-call wait Shortcut, no Helper extension.'
+echo 'AirRecord 1.2.2 build 21 packaged; compact home, activation failure cleanup, Shortcut verification, no Helper extension.'

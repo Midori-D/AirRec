@@ -144,6 +144,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     @Published private(set) var isEnabled: Bool
     @Published private(set) var isRunning = false
     @Published private(set) var isPreparing = false
+    @Published private(set) var activationError: String? = nil
     @Published private(set) var status = "자동 시작이 꺼져 있습니다."
     @Published private(set) var recentEvents: [String] = []
 
@@ -151,6 +152,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         return (["AirRecord \(version)", "자동 시작 설정: \(isEnabled ? "켜짐" : "꺼짐")",
                  "감시 상태: \(isRunning ? "실행 중" : "대기/중지")",
+                 "활성화 오류: \(activationError ?? "없음")",
                  "장시간 대기 설정: \(standby.isEnabled ? "켜짐" : "꺼짐")",
                  "위치 대기: \(standby.status)",
                  "위치 권한: \(standby.authorizationText)",
@@ -188,6 +190,13 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         super.init()
         standby.onStopped = { [weak self] message in
             guard let self, self.isRunning || self.isPreparing else { return }
+            if self.isPreparing {
+                // startIfEnabled returns this failure to its original caller.
+                // Keep the token so that caller can check its own cancellation
+                // before disabling; delegate callbacks run in a separate task.
+                self.setStatus(message)
+                return
+            }
             self.pause(message: message + " 자동 시작 설정은 유지됩니다.")
         }
         standby.onEvent = { [weak self] message in self?.recordEvent("위치 대기: " + message) }
@@ -195,7 +204,8 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     }
 
     func start() async {
-        if shortcutPreparation != nil {
+        activationError = nil
+        if shortcutPreparation != nil || isPreparing {
             pause(message: "앱에서 통화 감시 준비를 다시 시작합니다.")
         }
         isEnabled = true
@@ -213,7 +223,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     func setLocationStandbyEnabled(_ enabled: Bool) async {
         // Revoke any in-flight input before changing execution support. The
         // call policy retains all recording reservations across this restart.
-        pause(message: "장시간 대기 설정을 변경합니다.")
+        pause(message: activationError ?? "장시간 대기 설정을 변경합니다.")
         standby.setEnabled(enabled)
         guard !Task.isCancelled else { return }
         let request = preparationID
@@ -229,11 +239,11 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             // caller; its late permission result must not start a new engine.
             guard preparationID == request, isEnabled, standby.isEnabled, !Task.isCancelled else { return }
             if ready { await prepare() }
-            else { setStatus(standby.status) }
+            else { failActivation(request: request, message: standby.status) }
         } else if plan.shouldPrepareMonitoring {
             await prepare()
         } else if isEnabled && enabled {
-            setStatus(standby.status)
+            failActivation(request: request, message: standby.status)
         }
     }
 
@@ -241,7 +251,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     /// away from Phone. It does not turn a saved OFF preference back on.
     func resumeFromShortcut(recordingWaitOwner: UUID? = nil) async -> Bool {
         guard isEnabled, !Task.isCancelled else {
-            if !isEnabled { setStatus("앱에서 자동 시작을 먼저 켜 주세요.") }
+            if !isEnabled { setStatus(activationError ?? "앱에서 자동 시작을 먼저 켜 주세요.") }
             return false
         }
         let request: UUID
@@ -432,6 +442,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
 
     private func prepare(retryTunnelFor: TimeInterval = 8, shortcutOwner: UUID? = nil) async {
         guard isEnabled, !isRunning, !isPreparing else { return }
+        activationError = nil
         isPreparing = true
         let request = UUID()
         preparationID = request
@@ -445,8 +456,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         }
         setStatus("페어링 파일과 기기 연결을 확인하고 있습니다.")
         guard PairingFileStore.exists else {
-            isPreparing = false
-            setStatus("실행 준비에서 페어링 파일을 먼저 가져오세요.")
+            failActivation(request: request, message: "설정 탭에서 초기 설정을 완료 해 주세요.")
             return
         }
 
@@ -468,12 +478,10 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         switch probe {
         case .reachable: break
         case .localNetworkDenied:
-            isPreparing = false
-            setStatus("설정에서 AirRecord의 로컬 네트워크 접근을 허용하세요.")
+            failActivation(request: request, message: "설정에서 AirRecord의 로컬 네트워크 접근을 허용하세요.")
             return
         case .unreachable:
-            isPreparing = false
-            setStatus("LocalDevVPN을 연결한 뒤 다시 시작하세요.")
+            failActivation(request: request, message: "LocalDevVPN을 연결한 뒤 다시 시작하세요.")
             return
         }
 
@@ -482,8 +490,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             let ready = await standby.startIfEnabled()
             guard preparationID == request, isPreparing, isEnabled, !Task.isCancelled else { return }
             guard ready, standby.isRunning else {
-                isPreparing = false
-                setStatus(standby.status)
+                failActivation(request: request, message: standby.status)
                 return
             }
         }
@@ -503,8 +510,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             }
         }
         guard backgroundTask != .invalid || (standby.isEnabled && standby.isRunning) else {
-            isPreparing = false
-            setStatus("백그라운드 실행 시간을 받지 못했습니다. 잠시 후 다시 켜 주세요.")
+            failActivation(request: request, message: "백그라운드 실행 시간을 받지 못했습니다. 잠시 후 다시 켜 주세요.")
             return
         }
 
@@ -513,15 +519,29 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         nativeGeneration = gate.start()
         isPreparing = false
         isRunning = true
+        activationError = nil
         startStandbyChecks()
         setStatus(waitingStatus)
         evaluate()
     }
 
     func stop() {
+        activationError = nil
         isEnabled = false
         defaults.set(false, forKey: Self.enabledKey)
         pause(message: "자동 시작을 껐습니다. 이미 시작된 기본 녹음은 통화 화면에서 중지할 수 있습니다.")
+    }
+
+    private func failActivation(request: UUID, message: String) {
+        guard AirRecordActivationFailurePolicy.shouldDisable(
+            request: request, currentRequest: preparationID,
+            isEnabled: isEnabled, cancelled: Task.isCancelled) else { return }
+        isEnabled = false
+        defaults.set(false, forKey: Self.enabledKey)
+        activationError = message
+        // Invalidate input and preparation before cancelling their tasks. A
+        // late Shortcut cancellation cannot match or stop a later activation.
+        pause(message: message)
     }
 
     private func pause(message: String, preservingShortcutPreparation: Bool = false,

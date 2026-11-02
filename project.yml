@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AIRRECORD_AUTOMATION"
     MARKETING_VERSION: "1.2.2"
-    CURRENT_PROJECT_VERSION: 20
+    CURRENT_PROJECT_VERSION: 21
 targets:
   AirRecord:
     type: application
