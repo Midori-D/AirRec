@@ -77,6 +77,11 @@ struct AirRecordGlassView: View {
             standbySummary
             AirRecordShortcutStatusView(accent: accent)
             AirRecordShortcutStatusView(accent: accent, kind: .end)
+            AirRecordPlannedFeatureView(title: "AirRecord 수신 자동화", systemImage: "phone.arrow.down.left", accent: accent)
+            AirRecordPlannedFeatureView(title: "AirRecord 수신종료 자동화", systemImage: "phone.down.fill", accent: accent)
+            AirRecordPlannedFeatureView(title: "AirRecord 메모 이름 수정", systemImage: "note.text", accent: accent)
+            AirRecordPlannedFeatureView(title: "AirBeep (통화 녹음 고지 제거)", systemImage: "speaker.slash", accent: accent)
+            AirRecordPlannedFeatureView(title: "AirBeep2 (통화 녹음 카운트다운 제거)", systemImage: "timer", accent: accent)
         }
         .navigationTitle("AirRecord")
         .navigationBarTitleDisplayMode(.inline)
@@ -184,7 +189,7 @@ struct AirRecordGlassView: View {
 
     private var preparationCard: some View {
         AirRecordCard {
-            AirRecordHeading("실행 준비", systemImage: "checklist", tint: accent)
+            AirRecordHeading("초기 설정", systemImage: "checklist", tint: accent)
             Text("LocalDevVPN 연결과 개발자 디스크 준비를 마친 뒤 AirRecord를 활성화하세요.")
                 .font(.subheadline).foregroundStyle(.secondary)
             Button { showMount = true } label: {
@@ -197,6 +202,7 @@ struct AirRecordGlassView: View {
 
     private var backgroundCard: some View {
         AirRecordCard {
+            AirRecordHeading("백그라운드 AirRecord", systemImage: "location.fill", tint: accent)
             Toggle("백그라운드 AirRecord 활성화", isOn: Binding(
                 get: { standby.isEnabled },
                 set: { enabled in Task { await monitor.setLocationStandbyEnabled(enabled) } }
@@ -253,19 +259,21 @@ struct AirRecordGlassView: View {
     }
 
     private var backgroundDetails: some View {
-        DisclosureGroup("권한 및 상세 안내") {
+        DisclosureGroup("백그라운드 AirRecord란?") {
             VStack(alignment: .leading, spacing: 12) {
-                Text(standby.status)
+                AirRecordInfoRow("어떤 기능인가요?", value: "다른 앱을 사용하거나 화면이 꺼진 동안에도 통화 상태를 확인할 수 있도록 AirRecord의 대기를 유지합니다.")
+                AirRecordInfoRow("위치 권한은 왜 필요한가요?", value: "iOS의 백그라운드 위치 기능을 이용합니다. 위치 업데이트는 받지만 좌표는 읽거나 저장·전송하지 않고, 업데이트 시각만 확인합니다.")
+                AirRecordInfoRow("어떻게 시작하나요?", value: "이 옵션을 켜고 홈에서 AirRecord를 활성화하세요. ‘앱을 사용하는 동안 허용’을 선택한 뒤 연결 준비가 끝날 때까지 앱을 열어 두세요.")
+                AirRecordInfoRow("‘항상 허용’도 필요한가요?", value: "기본 대기에는 정밀 위치나 ‘항상 허용’이 필요하지 않습니다. ‘다이내믹 아일랜드 위치 표시 숨기기’를 사용하려면 ‘항상 허용’이 필요합니다. 표시 여부는 iOS가 관리하므로 모든 위치·개인정보 표시가 사라지는 것은 아닙니다.")
+                AirRecordInfoRow("사용할 때 알아두세요", value: "위치 사용 표시와 배터리 소모가 생길 수 있습니다. iOS가 실행을 중단할 수 있으며, 앱을 강제 종료하거나 기기를 재부팅했다면 다시 열어 활성화하세요. AirRecord를 비활성화하면 위치 업데이트도 중지합니다.")
+                Divider()
+                AirRecordInfoRow("현재 대기 상태", value: standby.status)
                 AirRecordInfoRow("현재 위치 권한", value: standby.authorizationText)
                 Text(standby.indicatorStatusText)
                 if !standby.isEnabled {
                     Text("백그라운드 기능을 켜기 전에 위치 권한을 준비할 수 있습니다.")
                     indicatorPermissionControls
                 }
-                Text("백그라운드 설정과 AirRecord를 활성화한 뒤 ‘앱을 사용하는 동안 허용’을 선택하세요. 연결이 완료될 때까지 앱을 열어 두세요. 기본 기능에는 정밀 위치나 ‘항상 허용’이 필요하지 않습니다.")
-                Text("위치 표시 숨기기는 실제 ‘항상 허용’ 권한을 받은 뒤 적용됩니다. iOS가 관리하는 모든 위치·개인정보 표시를 없애는 기능은 아닙니다.")
-                Text("위치 사용 표시와 배터리 소모가 생길 수 있습니다. AirRecord를 비활성화하면 위치 업데이트도 중지합니다. 강제 종료·재부팅 후에는 앱을 다시 열어 활성화하세요.")
-                Text("위치 표시를 숨긴 상태의 장시간 백그라운드 유지는 실기기 확인이 필요합니다.")
             }
             .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
         }
@@ -300,22 +308,22 @@ struct AirRecordGlassView: View {
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
             .font(.subheadline)
-            DisclosureGroup("통화 발신 · 먼저 시험하기") {
+            DisclosureGroup("발신 · 먼저 시험하기") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("‘통화 발신’은 기본 20초, 최대 25초 동안 발신 시작을 기다립니다. 발신하면 즉시 참, 발신 없이 시간이 지나면 거짓을 반환합니다.")
+                    Text("‘발신’은 기본 20초, 최대 25초 동안 발신 시작을 기다립니다. 발신하면 즉시 참, 발신 없이 시간이 지나면 거짓을 반환합니다.")
                     Text("이미 단일 발신 중이면 즉시 참을 반환합니다. FaceTime 등 CallKit을 사용하는 통화 앱의 발신도 감지될 수 있습니다.")
-                    Text("단축어에서 AirRecord의 ‘통화 발신’을 추가하고, 결과가 참일 때만 셀룰러 데이터를 끄는 등 다음 동작을 실행하도록 조건문을 설정하세요.")
+                    Text("단축어에서 AirRecord의 ‘발신’을 추가하고, 결과가 참일 때만 셀룰러 데이터를 끄는 등 다음 동작을 실행하도록 조건문을 설정하세요.")
                     Text("발신 대기 시험에는 VPN·페어링·위치 대기나 홈의 AirRecord 활성화가 필요하지 않습니다. 이 동작 자체는 데이터를 끄거나 녹음을 시작하지 않습니다.")
                     Text("전화 앱을 열고 대기 시간이 지난 뒤 발신하면 이번 실행에서는 감지하지 않습니다.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
             .font(.subheadline)
-            DisclosureGroup("통화 종료 · 데이터 복구") {
+            DisclosureGroup("발신종료 · 데이터 복구") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("‘통화 종료’는 모든 활성 통화가 끝날 때까지 기다립니다. 기본 최대 대기는 60분이며 180분까지 설정할 수 있습니다. 전화를 직접 끊는 동작은 아닙니다.")
+                    Text("‘발신종료’는 모든 활성 통화가 끝날 때까지 기다립니다. 기본 최대 대기는 60분이며 180분까지 설정할 수 있습니다. 전화를 직접 끊는 동작은 아닙니다.")
                     Text("이미 통화가 없으면 즉시 참을 반환하고, 시간 초과나 중단으로 대기를 끝내면 거짓을 반환합니다. 대기 중에는 시스템 진행 표시가 나타납니다.")
-                    Text("셀룰러 데이터를 끈 뒤 ‘통화 종료 → 셀룰러 데이터 켜기’를 연결하세요. 일반적인 시간 초과에도 데이터를 복구하려면 종료 결과가 거짓이어도 데이터 켜기가 실행되도록 설정하세요.")
+                    Text("셀룰러 데이터를 끈 뒤 ‘발신종료 → 셀룰러 데이터 켜기’를 연결하세요. 일반적인 시간 초과에도 데이터를 복구하려면 종료 결과가 거짓이어도 데이터 켜기가 실행되도록 설정하세요.")
                     Text("단축어 전체를 취소하거나 iOS가 실행을 중단하면 다음 데이터 켜기가 실행되지 않을 수 있습니다. 이때는 셀룰러 데이터를 직접 켜 주세요.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)

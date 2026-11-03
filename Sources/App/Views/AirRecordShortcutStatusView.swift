@@ -19,7 +19,7 @@ struct AirRecordShortcutStatusView: View {
     }
 
     private var title: String {
-        kind == .outgoing ? "AirRecord 발신 자동화" : "AirRecord 종료 자동화"
+        kind == .outgoing ? "AirRecord 발신 자동화" : "AirRecord 발신종료 자동화"
     }
 
     private var systemImage: String {
