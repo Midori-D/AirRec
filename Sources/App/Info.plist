@@ -12,9 +12,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>AirRecord</string>
+			<string>AirRec</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<string>airrec</string>
 				<string>airrecord</string>
 				<string>ictrl-app</string>
 			</array>

@@ -37,7 +37,7 @@ struct AirRecordContactView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .accessibilityHidden(true)
             }
-            Text("함께 다듬는 AirRecord")
+            Text("함께 다듬는 AirRec")
                 .font(.system(.title2, design: .rounded, weight: .bold))
             Text("사용 중 만난 불편이나 떠오른 아이디어를 편하게 남겨 주세요.")
                 .font(.subheadline).foregroundStyle(.secondary)
@@ -50,7 +50,7 @@ struct AirRecordContactView: View {
             Text("Midori-D").font(.title2.weight(.semibold))
             contactLink("GitHub 프로필", systemImage: "person.crop.circle", destination: profileURL)
             Divider()
-            contactLink("AirRecord 프로젝트", systemImage: "chevron.left.forwardslash.chevron.right", destination: projectURL)
+            contactLink("AirRec 프로젝트", systemImage: "chevron.left.forwardslash.chevron.right", destination: projectURL)
         }
     }
 

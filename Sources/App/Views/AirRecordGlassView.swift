@@ -77,13 +77,13 @@ struct AirRecordGlassView: View {
             standbySummary
             AirRecordShortcutStatusView(accent: accent)
             AirRecordShortcutStatusView(accent: accent, kind: .end)
-            AirRecordPlannedFeatureView(title: "AirRecord 수신 자동화", systemImage: "phone.arrow.down.left", accent: accent)
-            AirRecordPlannedFeatureView(title: "AirRecord 수신종료 자동화", systemImage: "phone.down.fill", accent: accent)
-            AirRecordPlannedFeatureView(title: "AirRecord 메모 이름 수정", systemImage: "note.text", accent: accent)
+            AirRecordPlannedFeatureView(title: "AirRec 수신 자동화", systemImage: "phone.arrow.down.left", accent: accent)
+            AirRecordPlannedFeatureView(title: "AirRec 수신종료 자동화", systemImage: "phone.down.fill", accent: accent)
+            AirRecordPlannedFeatureView(title: "AirRec 메모 이름 수정", systemImage: "note.text", accent: accent)
             AirRecordPlannedFeatureView(title: "AirBeep (통화 녹음 고지 제거)", systemImage: "speaker.slash", accent: accent)
             AirRecordPlannedFeatureView(title: "AirBeep2 (통화 녹음 카운트다운 제거)", systemImage: "timer", accent: accent)
         }
-        .navigationTitle("AirRecord")
+        .navigationTitle("AirRec")
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -97,7 +97,7 @@ struct AirRecordGlassView: View {
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 5) {
-                Text("AirRecord")
+                Text("AirRec")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 AirRecordVersionLabel(version: version)
                     .font(.subheadline)
@@ -117,7 +117,7 @@ struct AirRecordGlassView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(monitoringTitle)
                         .font(.title2.weight(.bold))
-                    Text(monitor.isRunning ? "AirRecord 일하는 중 🧐" : "AirRecord 쉬는 중 😴")
+                    Text(monitor.isRunning ? "AirRec 일하는 중 🧐" : "AirRec 쉬는 중 😴")
                         .font(.caption.weight(.medium)).foregroundStyle(.secondary)
                 }
             }
@@ -131,17 +131,17 @@ struct AirRecordGlassView: View {
     }
 
     private var monitoringTitle: String {
-        if monitor.activationError != nil { return "AirRecord 404 Error" }
-        if monitor.isPreparing { return "AirRecord 연결 중" }
-        if monitor.isRunning { return "AirRecord 활성화됨" }
-        return monitor.isEnabled ? "AirRecord 404 Error" : "AirRecord 비활성화됨"
+        if monitor.activationError != nil { return "AirRec 404 Error" }
+        if monitor.isPreparing { return "AirRec 연결 중" }
+        if monitor.isRunning { return "AirRec 활성화됨" }
+        return monitor.isEnabled ? "AirRec 404 Error" : "AirRec 비활성화됨"
     }
 
     @ViewBuilder
     private var monitoringControls: some View {
         if monitor.isRunning && monitor.activationError == nil {
             Button(role: .destructive) { monitor.stop() } label: {
-                Label("AirRecord 비활성화", systemImage: "pause.fill")
+                Label("AirRec 비활성화", systemImage: "pause.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered).controlSize(.large)
@@ -149,7 +149,7 @@ struct AirRecordGlassView: View {
             Button { Task { await monitor.start() } } label: {
                 HStack(spacing: 8) {
                     if monitor.isPreparing { ProgressView().controlSize(.small) }
-                    Text(monitor.isPreparing ? "연결 중…" : "AirRecord 활성화")
+                    Text(monitor.isPreparing ? "연결 중…" : "AirRec 활성화")
                         .fontWeight(.semibold)
                     if !monitor.isPreparing { Image(systemName: "arrow.right") }
                 }
@@ -158,7 +158,7 @@ struct AirRecordGlassView: View {
             .buttonStyle(.borderedProminent).controlSize(.large)
             .disabled(monitor.isPreparing)
             if monitor.activationError == nil && monitor.isPreparing {
-                Button("AirRecord 비활성화", role: .destructive) { monitor.stop() }
+                Button("AirRec 비활성화", role: .destructive) { monitor.stop() }
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -167,7 +167,7 @@ struct AirRecordGlassView: View {
 
     private var standbySummary: some View {
         AirRecordCard {
-            AirRecordStatusRow(title: "백그라운드 AirRecord", systemImage: "location.fill",
+            AirRecordStatusRow(title: "백그라운드 AirRec", systemImage: "location.fill",
                                isConfirmed: standby.isRunning && monitor.isRunning, accent: accent,
                                accessibilityValue: standby.isRunning && monitor.isRunning ? "활성화됨" : "비활성화됨")
         }
@@ -178,7 +178,6 @@ struct AirRecordGlassView: View {
             preparationCard
             backgroundCard
             shortcutCard
-            guidanceCard
             AirRecordVersionLabel(version: version)
                 .font(.footnote)
                 .frame(maxWidth: .infinity).padding(.vertical, 4)
@@ -190,36 +189,45 @@ struct AirRecordGlassView: View {
     private var preparationCard: some View {
         AirRecordCard {
             AirRecordHeading("초기 설정", systemImage: "checklist", tint: accent)
-            Text("LocalDevVPN 연결과 개발자 디스크 준비를 마친 뒤 AirRecord를 활성화하세요.")
+            Divider()
+            Text("LocalDevVPN 연결과 개발자 디스크 준비를 마친 뒤 AirRec을 활성화하세요.")
                 .font(.subheadline).foregroundStyle(.secondary)
             Button { showMount = true } label: {
                 Label("페어링 파일 · 개발자 디스크", systemImage: "externaldrive")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.bordered).controlSize(.large)
+            DisclosureGroup("초기 설정이란?") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("AirRec이 이 아이폰의 개발자 서비스에 연결할 수 있도록 페어링 파일과 개발자 디스크를 준비하는 과정입니다.")
+                    AirRecordInfoRow("1. 페어링 파일 가져오기", value: "iLoader 또는 idevice_pair 등으로 준비한 RemotePairing 파일을 선택하세요. Windows PC에서 만든 파일도 사용할 수 있습니다. 개인 페어링 파일은 다른 사람에게 공유하지 마세요.")
+                    AirRecordInfoRow("2. 개발자 디스크 다운로드", value: "셀룰러 데이터를 끄거나 VPN을 연결하기 전에 디스크 파일을 다운로드하세요. 다운로드한 파일은 다음 연결에도 다시 사용합니다.")
+                    AirRecordInfoRow("3. LocalDevVPN 연결", value: "LocalDevVPN을 연결하고 이 화면의 연결 확인 결과를 확인하세요. Wi-Fi가 없을 때는 셀룰러 데이터를 잠시 끈 연결을 시험할 수 있습니다. 직접 데이터를 껐다면 준비를 마친 뒤 다시 켜 주세요.")
+                    AirRecordInfoRow("4. 개발자 디스크 연결", value: "‘개발자 디스크 연결’을 누르고 성공할 때까지 기다리세요. 처음 연결할 때는 인터넷이 필요할 수 있습니다. 준비가 끝나면 홈에서 AirRec을 활성화하세요.")
+                    AirRecordInfoRow("다시 준비해야 할 때", value: "아이폰을 재부팅하면 개발자 디스크를 다시 연결해야 합니다. 연결 오류가 나면 LocalDevVPN과 페어링 파일 상태를 확인하세요. 실행 중에도 LocalDevVPN 연결이 필요합니다.")
+                    AirRecordInfoRow("첫 통화 확인", value: "아이폰의 잠금을 해제한 상태에서 먼저 시험하고, 실제 녹음 타이머와 메모 앱의 저장 결과를 확인하세요.")
+                }
+                .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+            }
+            .font(.subheadline)
         }
     }
 
     private var backgroundCard: some View {
         AirRecordCard {
-            AirRecordHeading("백그라운드 AirRecord", systemImage: "location.fill", tint: accent)
-            Toggle("백그라운드 AirRecord 활성화", isOn: Binding(
+            AirRecordHeading("백그라운드 AirRec", systemImage: "location.fill", tint: accent)
+            Divider()
+            Toggle("백그라운드 AirRec 활성화", isOn: Binding(
                 get: { standby.isEnabled },
                 set: { enabled in Task { await monitor.setLocationStandbyEnabled(enabled) } }
             ))
             .font(.headline)
             .disabled(monitor.isPreparing || (standby.isLiveContainer && !standby.isEnabled))
-            Text("백그라운드에서도 AirRecord를 유지하기 위해 위치 권한을 사용합니다. 좌표는 저장·전송하지 않습니다.")
-                .font(.footnote).foregroundStyle(.secondary)
             if standby.isLiveContainer {
                 Label("백그라운드 기능은 SideStore에 독립 설치한 앱에서 사용하세요.", systemImage: "info.circle")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if standby.isEnabled {
-                if !monitor.isEnabled {
-                    Label("홈에서 AirRecord를 활성화하면 적용됩니다.", systemImage: "info.circle")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
                 Divider()
                 Toggle("다이내믹 아일랜드 위치 표시 숨기기", isOn: Binding(
                     get: { standby.indicatorMinimizationEnabled },
@@ -231,6 +239,11 @@ struct AirRecordGlassView: View {
                     indicatorPermissionControls
                 }
             }
+            Divider()
+            Button { openAppSettings() } label: {
+                Label("위치 권한 설정 열기", systemImage: "arrow.up.forward.app")
+            }
+            .font(.subheadline.weight(.semibold))
             backgroundDetails
         }
     }
@@ -251,21 +264,16 @@ struct AirRecordGlassView: View {
             Text("권한 창이 나타나지 않으면 iOS 설정에서 변경해 주세요.")
                 .font(.footnote).foregroundStyle(.secondary)
         }
-        Divider()
-        Button { openAppSettings() } label: {
-            Label("위치 권한 설정 열기", systemImage: "arrow.up.forward.app")
-        }
-        .font(.subheadline.weight(.semibold))
     }
 
     private var backgroundDetails: some View {
-        DisclosureGroup("백그라운드 AirRecord란?") {
+        DisclosureGroup("백그라운드 AirRec이란?") {
             VStack(alignment: .leading, spacing: 12) {
-                AirRecordInfoRow("어떤 기능인가요?", value: "다른 앱을 사용하거나 화면이 꺼진 동안에도 통화 상태를 확인할 수 있도록 AirRecord의 대기를 유지합니다.")
+                AirRecordInfoRow("어떤 기능인가요?", value: "다른 앱을 사용하거나 화면이 꺼진 동안에도 통화 상태를 확인할 수 있도록 AirRec의 대기를 유지합니다.")
                 AirRecordInfoRow("위치 권한은 왜 필요한가요?", value: "iOS의 백그라운드 위치 기능을 이용합니다. 위치 업데이트는 받지만 좌표는 읽거나 저장·전송하지 않고, 업데이트 시각만 확인합니다.")
-                AirRecordInfoRow("어떻게 시작하나요?", value: "이 옵션을 켜고 홈에서 AirRecord를 활성화하세요. ‘앱을 사용하는 동안 허용’을 선택한 뒤 연결 준비가 끝날 때까지 앱을 열어 두세요.")
+                AirRecordInfoRow("어떻게 시작하나요?", value: "이 옵션을 켜고 홈에서 AirRec을 활성화하세요. ‘앱을 사용하는 동안 허용’을 선택한 뒤 연결 준비가 끝날 때까지 앱을 열어 두세요.")
                 AirRecordInfoRow("‘항상 허용’도 필요한가요?", value: "기본 대기에는 정밀 위치나 ‘항상 허용’이 필요하지 않습니다. ‘다이내믹 아일랜드 위치 표시 숨기기’를 사용하려면 ‘항상 허용’이 필요합니다. 표시 여부는 iOS가 관리하므로 모든 위치·개인정보 표시가 사라지는 것은 아닙니다.")
-                AirRecordInfoRow("사용할 때 알아두세요", value: "위치 사용 표시와 배터리 소모가 생길 수 있습니다. iOS가 실행을 중단할 수 있으며, 앱을 강제 종료하거나 기기를 재부팅했다면 다시 열어 활성화하세요. AirRecord를 비활성화하면 위치 업데이트도 중지합니다.")
+                AirRecordInfoRow("사용할 때 알아두세요", value: "위치 사용 표시와 배터리 소모가 생길 수 있습니다. iOS가 실행을 중단할 수 있으며, 앱을 강제 종료하거나 기기를 재부팅했다면 다시 열어 활성화하세요. AirRec을 비활성화하면 위치 업데이트도 중지합니다.")
                 Divider()
                 AirRecordInfoRow("현재 대기 상태", value: standby.status)
                 AirRecordInfoRow("현재 위치 권한", value: standby.authorizationText)
@@ -300,10 +308,10 @@ struct AirRecordGlassView: View {
                     if standby.isLiveContainer {
                         Text("아래 단축어 동작은 SideStore 독립 설치 후 사용하세요.")
                     }
-                    Text("‘전화 앱이 열릴 때’ LocalDevVPN을 연결하는 기존 자동화를 사용하세요. 감시를 다시 준비해야 한다면 VPN 연결 뒤에 ‘통화 감시 재개’ 또는 ‘녹음 시작 대기’를 연결할 수 있습니다.")
-                    Text("위치 대기는 AirRecord 화면에서 먼저 준비해야 합니다. 단축어는 준비된 위치 세션을 유지하며 감시를 재개합니다. 위치 대기가 꺼져 있으면 짧은 감시 시간만 준비합니다.")
-                    Text("전화 수신 자체를 감지하는 자동화는 아닙니다. 단축어 완료는 실제 녹음 시작 확인과 다릅니다.")
-                    Text("이 동작 직후나 ‘전화 앱이 닫힐 때’에 VPN 끄기를 붙이지 마세요.")
+                    Text("‘전화 앱이 열릴 때’ LocalDevVPN을 연결하는 기존 자동화를 사용하세요. AirRec의 초기 설정과 백그라운드 대기는 앱 화면에서 먼저 준비해 두세요.")
+                    Text("Wi-Fi가 없을 때는 ‘발신’ 결과가 참인 경우에만 셀룰러 데이터를 끄고, ‘발신종료’ 다음에 셀룰러 데이터 켜기를 연결할 수 있습니다.")
+                    Text("발신을 감지했다는 결과는 실제 녹음 시작 확인과 다릅니다. 처음에는 기본 전화 화면의 녹음 타이머를 확인하세요.")
+                    Text("전화 앱을 닫거나 다른 앱으로 전환하는 것은 통화 종료와 다릅니다. ‘전화 앱이 닫힐 때’ VPN 끄기를 연결하면 녹음 준비가 중단될 수 있습니다.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
@@ -312,8 +320,8 @@ struct AirRecordGlassView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("‘발신’은 기본 20초, 최대 25초 동안 발신 시작을 기다립니다. 발신하면 즉시 참, 발신 없이 시간이 지나면 거짓을 반환합니다.")
                     Text("이미 단일 발신 중이면 즉시 참을 반환합니다. FaceTime 등 CallKit을 사용하는 통화 앱의 발신도 감지될 수 있습니다.")
-                    Text("단축어에서 AirRecord의 ‘발신’을 추가하고, 결과가 참일 때만 셀룰러 데이터를 끄는 등 다음 동작을 실행하도록 조건문을 설정하세요.")
-                    Text("발신 대기 시험에는 VPN·페어링·위치 대기나 홈의 AirRecord 활성화가 필요하지 않습니다. 이 동작 자체는 데이터를 끄거나 녹음을 시작하지 않습니다.")
+                    Text("단축어에서 AirRec의 ‘발신’을 추가하고, 결과가 참일 때만 셀룰러 데이터를 끄는 등 다음 동작을 실행하도록 조건문을 설정하세요.")
+                    Text("발신 대기 시험에는 VPN·페어링·위치 대기나 홈의 AirRec 활성화가 필요하지 않습니다. 이 동작 자체는 데이터를 끄거나 녹음을 시작하지 않습니다.")
                     Text("전화 앱을 열고 대기 시간이 지난 뒤 발신하면 이번 실행에서는 감지하지 않습니다.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
@@ -347,26 +355,6 @@ struct AirRecordGlassView: View {
         }
     }
 
-    private var guidanceCard: some View {
-        AirRecordCard {
-            AirRecordHeading("사용 안내", systemImage: "heart.text.clipboard", tint: accent)
-            DisclosureGroup("첫 통화와 실행 유지") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("잠금을 해제한 기본 통화 화면에서 먼저 확인하세요. 녹음 요청 후 실제 녹음 타이머와 저장 결과를 확인해 주세요.")
-                    Text("AirRecord 설정은 저장됩니다. iOS가 실행을 중단하면 감시는 일시 정지되며, 앱에 돌아오면 연결을 확인하고 재개합니다. 무제한 실행을 보장하지 않습니다.")
-                    Text("LocalDevVPN은 실행 중에도 연결되어 있어야 합니다. 강제 종료·재부팅 후에는 앱을 다시 열어 준비하세요.")
-                }
-                .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
-            }
-            .font(.subheadline)
-            DisclosureGroup("녹음 안내음") {
-                Text("안내음은 iOS와 기존 AirBeep 설정을 따릅니다. AirRecord는 안내음 파일을 변경하지 않습니다.")
-                    .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
-            }
-            .font(.subheadline)
-        }
-    }
-
     private var activityScreen: some View {
         AirRecordPage(accent: accent) {
             AirRecordCard {
@@ -375,7 +363,7 @@ struct AirRecordGlassView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
                 if monitor.recentEvents.isEmpty {
                     ContentUnavailableView("아직 기록이 없습니다", systemImage: "clock",
-                                           description: Text("AirRecord를 활성화하면 실행 상태가 여기에 표시됩니다."))
+                                           description: Text("AirRec을 활성화하면 실행 상태가 여기에 표시됩니다."))
                 } else {
                     ForEach(Array(monitor.recentEvents.enumerated().reversed()), id: \.offset) { entry in
                         HStack(alignment: .top, spacing: 12) {

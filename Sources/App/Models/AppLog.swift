@@ -59,7 +59,7 @@ final class AppLog {
     private func header() -> String {
         let d = UIDevice.current
         return """
-        ── AirRecord app log ─────────────────────────────
+        ── AirRec app log ─────────────────────────────
         started : \(Date())
         pid     : \(ProcessInfo.processInfo.processIdentifier)
         device  : \(DeviceInfo.modelIdentifier) · \(d.systemName) \(d.systemVersion)

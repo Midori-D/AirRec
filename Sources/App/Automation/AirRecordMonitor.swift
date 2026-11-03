@@ -150,7 +150,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
 
     var diagnosticSummary: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        return (["AirRecord \(version)", "자동 시작 설정: \(isEnabled ? "켜짐" : "꺼짐")",
+        return (["AirRec \(version)", "자동 시작 설정: \(isEnabled ? "켜짐" : "꺼짐")",
                  "감시 상태: \(isRunning ? "실행 중" : "대기/중지")",
                  "활성화 오류: \(activationError ?? "없음")",
                  "장시간 대기 설정: \(standby.isEnabled ? "켜짐" : "꺼짐")",
@@ -307,7 +307,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             request = id
             shared = existing
         } else {
-            guard isEnabled else { return "AirRecord가 꺼져 있습니다. 다음 동작에서 셀룰러 데이터를 복구하세요." }
+            guard isEnabled else { return "AirRec이 꺼져 있습니다. 다음 동작에서 셀룰러 데이터를 복구하세요." }
             guard !Task.isCancelled else { return "녹음 대기를 취소했습니다. 셀룰러 데이터 상태를 확인하세요." }
             request = UUID()
             let startedAt = ProcessInfo.processInfo.systemUptime
@@ -426,7 +426,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
                 case .failedAfterReservation: message = "녹음 시작 요청의 결과를 확인하지 못했습니다. 다시 누르지 않았습니다."
                 }
             }
-        case .stopped: message = "AirRecord가 중지되어 녹음 대기를 끝냈습니다."
+        case .stopped: message = "AirRec이 중지되어 녹음 대기를 끝냈습니다."
         case .superseded: message = "새 준비 요청이 시작되어 이전 녹음 대기를 끝냈습니다."
         case .cancelled: message = "녹음 대기를 취소했습니다."
         case .timedOut: message = "녹음 대기 시간이 끝났습니다. 현재 감시의 추가 입력을 중지했습니다."
@@ -434,7 +434,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         case .callEnded: message = "대상 통화가 종료되어 녹음 대기를 끝냈습니다."
         case .callChanged: message = "대상 통화가 바뀌어 녹음 대기를 끝냈습니다."
         case .multipleCalls: message = "활성 통화가 여럿이어서 녹음 대기를 끝냈습니다."
-        case .preparationFailed: message = "AirRecord 연결 준비가 완료되지 않아 녹음 대기를 끝냈습니다."
+        case .preparationFailed: message = "AirRec 연결 준비가 완료되지 않아 녹음 대기를 끝냈습니다."
         }
         recordEvent("단축어 대기: " + message)
         return message + " 다음 동작에서 셀룰러 데이터를 복구하고 상태를 확인하세요."
@@ -454,7 +454,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
                 pause(message: "통화 감시 준비를 취소했습니다. 자동 시작 설정은 유지됩니다.")
             }
         }
-        setStatus("페어링 파일과 DevVPN 연결을 확인하고 있습니다.")
+        setStatus("페어링 파일과 LocalDevVPN 연결을 확인하고 있습니다.")
         guard PairingFileStore.exists else {
             failActivation(request: request, message: "설정 탭에서 초기 설정을 완료 해 주세요.")
             return
@@ -478,7 +478,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         switch probe {
         case .reachable: break
         case .localNetworkDenied:
-            failActivation(request: request, message: "설정에서 AirRecord의 로컬 네트워크 접근을 허용하세요.")
+            failActivation(request: request, message: "설정에서 AirRec의 로컬 네트워크 접근을 허용하세요.")
             return
         case .unreachable:
             failActivation(request: request, message: "LocalDevVPN을 연결한 뒤 다시 시작하세요.")
@@ -495,7 +495,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             }
         }
 
-        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "AirRecord AX") { [weak self] in
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "AirRec AX") { [weak self] in
             // UIKit invokes expiration on the main actor. End its assertion
             // synchronously, and never let an old expiration pause a new run.
             guard let self, self.preparationID == request else { return }
@@ -751,7 +751,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         let time = Date().formatted(date: .omitted, time: .standard)
         recentEvents.append("[\(time)] \(value)")
         if recentEvents.count > 12 { recentEvents.removeFirst(recentEvents.count - 12) }
-        airRecordLog("AirRecord: \(value)")
+        airRecordLog("AirRec: \(value)")
     }
 }
 #endif

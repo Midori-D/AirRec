@@ -154,9 +154,9 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
             status = "기본 위치 권한이 없어 백그라운드 대기를 준비하지 못했습니다. iOS 설정에서 확인하세요."
             refreshAuthorizationPresentation()
         case .requireForeground:
-            status = "기본 위치 권한을 요청하려면 AirRecord를 화면에 연 상태에서 백그라운드 설정을 다시 켜 주세요."
+            status = "기본 위치 권한을 요청하려면 AirRec을 화면에 연 상태에서 백그라운드 설정을 다시 켜 주세요."
         case .unsupportedEnvironment:
-            status = "백그라운드 위치 권한은 SideStore에 독립 설치한 AirRecord에서 준비하세요."
+            status = "백그라운드 위치 권한은 SideStore에 독립 설치한 AirRec에서 준비하세요."
         case .missingUsageDescription:
             status = "이 설치에는 기본 위치 권한 설명이 없습니다. 새 IPA를 설치하세요."
         case .none:
@@ -220,12 +220,12 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     /// launch/resume, and the runtime preparation loop never call this method.
     func requestAlwaysAuthorization() {
         guard UIApplication.shared.applicationState == .active else {
-            authorizationHint = "추가 권한은 AirRecord 화면을 연 상태에서 버튼을 눌러 요청하세요."
+            authorizationHint = "추가 권한은 AirRec 화면을 연 상태에서 버튼을 눌러 요청하세요."
             refreshAuthorizationPresentation()
             return
         }
         guard !isLiveContainer else {
-            authorizationHint = "추가 권한은 SideStore에 독립 설치한 AirRecord에서 요청하세요."
+            authorizationHint = "추가 권한은 SideStore에 독립 설치한 AirRec에서 요청하세요."
             refreshAuthorizationPresentation()
             return
         }
@@ -306,14 +306,14 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     func startIfEnabled() async -> Bool {
         guard isEnabled, !Task.isCancelled else { return false }
         guard !isLiveContainer else {
-            fail("장시간 대기는 SideStore에 독립 설치한 AirRecord에서 사용하세요. LiveContainer 내부 실행은 지원하지 않습니다.")
+            fail("장시간 대기는 SideStore에 독립 설치한 AirRec에서 사용하세요. LiveContainer 내부 실행은 지원하지 않습니다.")
             return false
         }
         if isRunning && policy.isReady { return true }
 
         if policy.session == nil {
             guard UIApplication.shared.applicationState == .active else {
-                status = "장시간 대기를 시작하려면 AirRecord를 화면에 열어 주세요."
+                status = "장시간 대기를 시작하려면 AirRec을 화면에 열어 주세요."
                 return false
             }
             let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
@@ -402,7 +402,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         case .authorizedWhenInUse, .authorizedAlways:
             guard !updatesStarted else { return }
             guard UIApplication.shared.applicationState != .background else {
-                fail("위치 서비스 시작 전에 앱이 백그라운드로 이동했습니다. AirRecord를 열고 다시 준비하세요.")
+                fail("위치 서비스 시작 전에 앱이 백그라운드로 이동했습니다. AirRec을 열고 다시 준비하세요.")
                 return
             }
             guard UIApplication.shared.applicationState == .active else {
@@ -454,7 +454,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
 
     private func receivedPause(for id: UUID) {
         guard policy.pause(for: id) else { return }
-        fail("iOS가 위치 서비스를 일시 중지했습니다. 장시간 대기를 다시 준비하려면 AirRecord를 열어 주세요.")
+        fail("iOS가 위치 서비스를 일시 중지했습니다. 장시간 대기를 다시 준비하려면 AirRec을 열어 주세요.")
     }
 
     func refreshEnvironment() {

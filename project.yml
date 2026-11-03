@@ -1,4 +1,4 @@
-name: AirRecord
+name: AirRec
 options:
   deploymentTarget:
     iOS: "27.0"
@@ -10,10 +10,10 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AIRRECORD_AUTOMATION"
-    MARKETING_VERSION: "1.2.5"
-    CURRENT_PROJECT_VERSION: 24
+    MARKETING_VERSION: "1.2.6"
+    CURRENT_PROJECT_VERSION: 25
 targets:
-  AirRecord:
+  AirRec:
     type: application
     platform: iOS
     sources:
@@ -29,11 +29,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(AIRRECORD_BUNDLE_IDENTIFIER)"
-        # Existing App Intents use this Swift module identity; the product is AirRecord.
+        # Existing App Intents keep this Swift module identity; the product is AirRec.
         PRODUCT_MODULE_NAME: iCTRL
         SWIFT_OBJC_BRIDGING_HEADER: Sources/App/Automation/AirRecord-Bridging-Header.h
-        INFOPLIST_KEY_CFBundleDisplayName: "AirRecord"
-        INFOPLIST_KEY_CFBundleName: "AirRecord"
+        INFOPLIST_KEY_CFBundleDisplayName: "AirRec"
+        INFOPLIST_KEY_CFBundleName: "AirRec"
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -42,10 +42,10 @@ targets:
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "AirRecord uses LocalDevVPN to reach this iPhone's developer service and start native call recording."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "AirRec uses LocalDevVPN to reach this iPhone's developer service and start native call recording."
         INFOPLIST_FILE: Sources/App/Info.plist
 schemes:
-  AirRecord:
+  AirRec:
     build:
       targets:
-        AirRecord: all
+        AirRec: all

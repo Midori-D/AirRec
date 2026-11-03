@@ -1,4 +1,5 @@
 """Check the normal-app AX package independently of the legacy test Runner."""
+import json
 import plistlib
 from pathlib import PurePosixPath
 import struct
@@ -17,11 +18,11 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.calltap.prototype.ictrl':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.2.5' or str(info.get('CFBundleVersion')) != '24':
+        if info.get('CFBundleShortVersionString') != '1.2.6' or str(info.get('CFBundleVersion')) != '25':
             raise ValueError('Unexpected AX app version.')
-        if info.get('CFBundleDisplayName') != 'AirRecord':
+        if info.get('CFBundleDisplayName') != 'AirRec' or info.get('CFBundleName') != 'AirRec':
             raise ValueError('Unexpected app display name.')
-        if info.get('CFBundleExecutable') != 'AirRecord':
+        if info.get('CFBundleExecutable') != 'AirRec':
             raise ValueError('Unexpected app executable name.')
         if info.get('CallTapDirectOnly'):
             raise ValueError('Experimental direct connection marker must be absent.')
@@ -47,16 +48,12 @@ def verify(path):
         if icon.get('CFBundleIconName') != 'AppIcon':
             raise ValueError('App icon catalog missing.')
         metadata = [name for name in names if name.startswith(prefix+'Metadata.appintents/') and not name.endswith('/')]
-        if not metadata or not any(b'ResumeAirRecordMonitoringIntent' in archive.read(name) for name in metadata):
+        actions_path = prefix+'Metadata.appintents/extract.actionsdata'
+        if actions_path not in metadata:
             raise ValueError('Shortcut intent metadata missing.')
-        if not any(b'WaitForAirRecordRecordingIntent' in archive.read(name) for name in metadata):
-            raise ValueError('Cellular recording wait intent metadata missing.')
-        if not any(b'WaitForAirRecordOutgoingCallIntent' in archive.read(name) for name in metadata):
-            raise ValueError('Outgoing call wait intent metadata missing.')
-        if not any(b'VerifyAirRecordShortcutCatalogIntent' in archive.read(name) for name in metadata):
-            raise ValueError('Shortcut catalog verification intent metadata missing.')
-        if not any(b'WaitForAirRecordCallEndIntent' in archive.read(name) for name in metadata):
-            raise ValueError('Call-end wait intent metadata missing.')
+        actions = json.loads(archive.read(actions_path))['actions']
+        if set(actions) != {'WaitForAirRecordOutgoingCallIntent', 'WaitForAirRecordCallEndIntent'}:
+            raise ValueError('Exactly the outgoing and call-end actions must remain; removed actions must be absent.')
         if any(name.endswith('embedded.mobileprovision') or '.xctest/' in name for name in names):
             raise ValueError('Profiles and XCTest plugins must not be distributed.')
         count = 0
@@ -91,7 +88,7 @@ def verify(path):
             count += 1
         if count < 1 or prefix+info['CFBundleExecutable'] not in names:
             raise ValueError('Main executable missing.')
-        print(f'PASS: AirRecord 1.2.5 (24), location standby permission, AppIcon, outgoing/call-end/catalog/existing Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
+        print(f'PASS: AirRec 1.2.6 (25), location standby permission, AppIcon, outgoing/call-end Shortcut intents only, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])

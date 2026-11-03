@@ -1,4 +1,4 @@
-name: Build AirRecord
+name: Build AirRec
 on:
   workflow_dispatch:
 permissions:
@@ -56,10 +56,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ steps.rawax-cache.outputs.cache-primary-key }}
-      - name: Upload AirRecord
+      - name: Upload AirRec
         uses: actions/upload-artifact@v7
         with:
-          name: AirRecord-iOS
-          path: Extras/release/AirRecord-unsigned.ipa
+          name: AirRec-iOS
+          path: Extras/release/AirRec-unsigned.ipa
           if-no-files-found: error
           retention-days: 7
