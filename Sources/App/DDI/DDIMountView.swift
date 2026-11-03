@@ -106,7 +106,7 @@ struct DDIMountView: View {
             if tunnelProbe == .localNetworkDenied { return L10n.t(.localNetworkDeniedDetail) }
             return vpnInstalled ? L10n.t(.vpnNotConnected) : L10n.t(.vpnNotInstalled)
         }
-        return "something is missing"
+        return L10n.t(.mountMissingPrerequisite)
     }
 
     /// …and subscribe once for later changes.
@@ -194,12 +194,12 @@ struct DDIMountView: View {
     private var wifiSection: some View {
         Section {
             stepRow(3, done: onWiFi || tunnelUp,
-                    title: "네트워크 준비",
-                    detail: onWiFi ? "Wi-Fi에 연결되어 있습니다."
-                        : tunnelUp ? "VPN 응답을 확인했습니다. 개발자 연결은 마운트할 때 검사합니다."
-                        : "Wi-Fi에 연결하거나, 셀룰러 데이터를 끈 뒤 LocalDevVPN을 연결하세요.")
+                    title: L10n.t(.networkPreparation),
+                    detail: onWiFi ? L10n.t(.networkWiFiReady)
+                        : tunnelUp ? L10n.t(.networkTunnelReady)
+                        : L10n.t(.networkOfflineHint))
         } footer: {
-            Text("Wi-Fi가 없을 때는 셀룰러 데이터를 잠시 끈 로컬 VPN 연결을 시험할 수 있습니다. 디스크 파일은 데이터를 끄기 전에 다운로드하세요. 이 화면에서 데이터를 껐다면 작업 후 직접 다시 켜 주세요.")
+            Text(L10n.t(.networkOfflineFooter))
         }
     }
 
@@ -324,9 +324,9 @@ struct DDIMountView: View {
 
     private var phaseLabel: String {
         switch mounter.phase {
-        case .connecting:     return "Connecting through the tunnel…"
-        case .queryingDevice: return "Reading device identity…"
-        case .finalizing:     return "Finalizing…"
+        case .connecting:     return L10n.t(.mountConnecting)
+        case .queryingDevice: return L10n.t(.mountReadingDevice)
+        case .finalizing:     return L10n.t(.mountFinalizing)
         default:              return ""
         }
     }

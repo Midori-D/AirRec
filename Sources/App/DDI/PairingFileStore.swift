@@ -138,17 +138,12 @@ enum PairingFileStore {
 
         let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)
         guard let dict = plist as? [String: Any] else {
-            throw DDIError.invalidPairingFile("Not a property list. Expected a RemotePairing file, "
-                + "such as StikDebug's pairingFile.plist.")
+            throw DDIError.invalidPairingFile(L10n.t(.pairingNotPropertyList))
         }
         if dict["HostID"] != nil || dict["HostCertificate"] != nil {
-            throw DDIError.invalidPairingFile("This is a lockdown pairing file (as written by "
-                + "`idevicepair pair` or kept by SideStore). Mounting needs a RemotePairing file: "
-                + "use StikDebug's pairingFile.plist, or create one with idevice_pair "
-                + "(choose Remote pairing) or iLoader.")
+            throw DDIError.invalidPairingFile(L10n.t(.pairingLockdownRecord))
         }
-        throw DDIError.invalidPairingFile("A property list, but not a RemotePairing file: it needs "
-            + "public_key, private_key and identifier.")
+        throw DDIError.invalidPairingFile(L10n.t(.pairingMissingRemoteKeys))
     }
 
     private static func parsesAsRemotePairing(_ data: Data) -> Bool {

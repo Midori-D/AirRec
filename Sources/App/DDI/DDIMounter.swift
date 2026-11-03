@@ -14,23 +14,21 @@ enum DDIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidPairingFile(let why):
-            return "Pairing file rejected: \(why)"
+            return String(format: L10n.t(.ddiPairingRejected), why)
         case .missingPairingFile:
-            return "No pairing file imported yet."
+            return L10n.t(.ddiPairingMissing)
         case .missingImage:
-            return "Developer Disk Image files are missing — download them first."
+            return L10n.t(.ddiImageMissing)
         case .tunnelDown:
-            return "LocalDevVPN isn't connected. The tunnel doesn't survive a reboot — "
-                 + "open LocalDevVPN and connect it (step 1), then mount again."
+            return L10n.t(.ddiTunnelDown)
         case .localNetworkDenied:
-            return "iOS blocked the connection to the tunnel: Local Network access is off for AirRecord. "
-                 + "Turn it on in Settings → Privacy & Security → Local Network (or Settings → AirRecord), then mount again."
+            return L10n.t(.ddiLocalNetworkDenied)
         case .tunnelUnavailable(let why):
-            return "Can't reach the device's debug service: \(why)"
+            return String(format: L10n.t(.ddiTunnelUnavailable), why)
         case .ffi(let op, let msg):
-            return "\(op) failed: \(msg)"
+            return String(format: L10n.t(.ddiOperationFailed), op, msg)
         case .downloadFailed(let file, let why):
-            return "Couldn't download \(file): \(why)"
+            return String(format: L10n.t(.ddiDownloadFailed), file, why)
         }
     }
 }
@@ -392,13 +390,10 @@ final class DDIMounter: ObservableObject {
         // string to someone with no way to look it up.
         var detail = "\(message) (code \(code))"
         if message.contains("device socket io failed") || message.contains("connect:") {
-            detail += ". The tunnel isn't reachable — LocalDevVPN is most likely disconnected "
-                    + "(it doesn't survive a reboot). Connect it and try again."
+            detail += L10n.t(.ddiTunnelFailureHint)
         }
         if message.contains("ImageMountFailed") {
-            detail += ". The device rejected the image — usually because it doesn't match this "
-                    + "iOS version, or the download is incomplete. Re-download the image files "
-                    + "and try again; if it persists, this iOS build may be newer than the mirror."
+            detail += L10n.t(.ddiImageRejectedHint)
         }
         throw DDIError.ffi(operation, detail)
     }

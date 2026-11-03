@@ -144,7 +144,7 @@ final class DeveloperDiskImageStore: ObservableObject {
                 progress = completed
                 continue
             }
-            statusMessage = "Downloading \(component.rawValue)…"
+            statusMessage = String(format: L10n.t(.ddiDownloadingFile), component.rawValue)
             try await download(component, to: dest) { [weak self] frac in
                 Task { @MainActor in self?.progress = completed + frac * weight }
             }
@@ -180,7 +180,7 @@ final class DeveloperDiskImageStore: ObservableObject {
                 let (bytes, response) = try await Self.session.bytes(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 || http.statusCode == 206 else {
                     throw DDIError.downloadFailed(component.rawValue,
-                        (response as? HTTPURLResponse).map { "HTTP \($0.statusCode)" } ?? "no response")
+                        (response as? HTTPURLResponse).map { "HTTP \($0.statusCode)" } ?? L10n.t(.ddiNoResponse))
                 }
                 if http.statusCode == 200 {
                     data = Data()
@@ -212,10 +212,11 @@ final class DeveloperDiskImageStore: ObservableObject {
             } catch {
                 lastError = error
                 airRecordLog("⚠️ \(component.rawValue) download interrupted at \(data.count)B (attempt \(attempt)): \(error.localizedDescription)")
-                statusMessage = "Downloading \(component.rawValue)… (retrying, \(attempt)/\(Self.downloadAttempts - 1))"
+                statusMessage = String(format: L10n.t(.ddiRetryingDownload), component.rawValue,
+                                       String(attempt), String(Self.downloadAttempts - 1))
             }
         }
-        throw lastError ?? DDIError.downloadFailed(component.rawValue, "no response")
+        throw lastError ?? DDIError.downloadFailed(component.rawValue, L10n.t(.ddiNoResponse))
     }
 
     /// Accept a user-supplied copy, for people who'd rather pull the files out

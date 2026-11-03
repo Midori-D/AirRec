@@ -1,7 +1,7 @@
 // Copyright 2026 AirRecord contributors. SPDX-License-Identifier: Apache-2.0
 #if AIRRECORD_AUTOMATION // AIRRECORD_AUTOMATION 조건이 있을 경우 아래 코드를 빌드에 포함함
 import SwiftUI
-import UIKit
+import Foundation
 
 @MainActor
 struct AirRecordShortcutStatusView: View {
@@ -10,7 +10,6 @@ struct AirRecordShortcutStatusView: View {
     let accent: Color
     var kind: Kind = .outgoing
     @StateObject private var presence = AirRecordShortcutPresence.shared
-    @State private var openingError: String?
 
     private var lastActionRunAt: Date? {
         switch kind {
@@ -38,28 +37,6 @@ struct AirRecordShortcutStatusView: View {
             } else {
                 Text("단축어 동작을 실행하면 체크가 표시됩니다.")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-            if kind == .outgoing {
-                Button("단축어 열기", systemImage: "arrow.up.forward.app") { openShortcut() }
-                    .font(.subheadline.weight(.semibold))
-            }
-            if let openingError {
-                Text(openingError).font(.footnote).foregroundStyle(.orange)
-            }
-        }
-    }
-
-    private func openShortcut() {
-        var components = URLComponents()
-        components.scheme = "shortcuts"
-        components.host = "open-shortcut"
-        components.queryItems = [URLQueryItem(name: "name", value: AirRecordShortcutPresence.targetName)]
-        guard let url = components.url else { return }
-        openingError = nil
-        UIApplication.shared.open(url, options: [:]) { opened in
-            Task { @MainActor in
-                if !opened { openingError = "단축어 앱을 열지 못했습니다." }
-                // Opening the app is not evidence that the named shortcut exists.
             }
         }
     }

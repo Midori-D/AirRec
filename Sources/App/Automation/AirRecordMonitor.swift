@@ -454,7 +454,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
                 pause(message: "통화 감시 준비를 취소했습니다. 자동 시작 설정은 유지됩니다.")
             }
         }
-        setStatus("페어링 파일과 기기 연결을 확인하고 있습니다.")
+        setStatus("페어링 파일과 DevVPN 연결을 확인하고 있습니다.")
         guard PairingFileStore.exists else {
             failActivation(request: request, message: "설정 탭에서 초기 설정을 완료 해 주세요.")
             return
