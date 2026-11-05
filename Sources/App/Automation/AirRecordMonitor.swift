@@ -145,17 +145,17 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     @Published private(set) var isRunning = false
     @Published private(set) var isPreparing = false
     @Published private(set) var activationError: String? = nil
-    @Published private(set) var status = "자동 시작이 꺼져 있습니다."
+    @Published private(set) var status = "AirRec 비활성화됨"
     @Published private(set) var recentEvents: [String] = []
 
     var diagnosticSummary: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        return (["AirRec \(version)", "자동 시작 설정: \(isEnabled ? "켜짐" : "꺼짐")",
+        return (["AirRec \(version)", "AirRec 활성화 설정: \(isEnabled ? "켜짐" : "꺼짐")",
                  "감시 상태: \(isRunning ? "실행 중" : "대기/중지")",
                  "활성화 오류: \(activationError ?? "없음")",
-                 "장시간 대기 설정: \(standby.isEnabled ? "켜짐" : "꺼짐")",
-                 "위치 대기: \(standby.status)",
-                 "위치 권한: \(standby.authorizationText)",
+                 "백그라운드 AirRec 설정: \(standby.isEnabled ? "켜짐" : "꺼짐")",
+                 "백그라운드 상태: \(standby.status)",
+                 standby.authorizationText,
                  "위치 표시: \(standby.indicatorStatusText)",
                  "백그라운드 앱 새로 고침: \(standby.backgroundRefreshStatusText)",
                  "저전력 모드: \(standby.lowPowerModeEnabled ? "켜짐" : "꺼짐")",
@@ -197,16 +197,16 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
                 self.setStatus(message)
                 return
             }
-            self.pause(message: message + " 자동 시작 설정은 유지됩니다.")
+            self.pause(message: message + " · 활성화 설정 유지")
         }
-        standby.onEvent = { [weak self] message in self?.recordEvent("위치 대기: " + message) }
-        if isEnabled { status = "자동 시작 설정이 유지되어 있습니다. 연결을 확인하면 재개합니다." }
+        standby.onEvent = { [weak self] message in self?.recordEvent(message) }
+        if isEnabled { status = "AirRec 연결 확인 후 재개" }
     }
 
     func start() async {
         activationError = nil
         if shortcutPreparation != nil || isPreparing {
-            pause(message: "앱에서 통화 감시 준비를 다시 시작합니다.")
+            pause(message: "AirRec 연결 재시도")
         }
         isEnabled = true
         defaults.set(true, forKey: Self.enabledKey)
@@ -223,7 +223,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     func setLocationStandbyEnabled(_ enabled: Bool) async {
         // Revoke any in-flight input before changing execution support. The
         // call policy retains all recording reservations across this restart.
-        pause(message: activationError ?? "장시간 대기 설정을 변경합니다.")
+        pause(message: activationError ?? "백그라운드 AirRec 설정 변경")
         standby.setEnabled(enabled)
         guard !Task.isCancelled else { return }
         let request = preparationID
@@ -251,7 +251,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     /// away from Phone. It does not turn a saved OFF preference back on.
     func resumeFromShortcut(recordingWaitOwner: UUID? = nil) async -> Bool {
         guard isEnabled, !Task.isCancelled else {
-            if !isEnabled { setStatus(activationError ?? "앱에서 자동 시작을 먼저 켜 주세요.") }
+            if !isEnabled { setStatus(activationError ?? "홈에서 AirRec을 먼저 활성화해 주세요.") }
             return false
         }
         let request: UUID
@@ -265,7 +265,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
                 guard self.isEnabled, !Task.isCancelled else { return false }
                 // Refresh even a running lease: it may be about to expire.
                 // The same gate/policy retains all prior one-shot reservations.
-                self.pause(message: "단축어에서 VPN 연결과 통화 감시를 다시 준비합니다.",
+                self.pause(message: "단축어로 AirRec 연결 재시도",
                            preservingShortcutPreparation: true, preservingLocation: true)
                 self.bindRecordingWaitPreparation(shortcut: request)
                 await self.prepare(retryTunnelFor: 8, shortcutOwner: request)
@@ -284,11 +284,11 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         } onCancel: {
             Task { @MainActor [weak self] in
                 guard let self, self.shortcutPreparationID == request else { return }
-                self.pause(message: "단축어의 감시 준비를 취소했습니다. 자동 시작 설정은 유지됩니다.")
+                self.pause(message: "단축어 연결 준비 취소 · 활성화 설정 유지")
             }
         }
         if Task.isCancelled, shortcutPreparationID == request {
-            pause(message: "단축어의 감시 준비를 취소했습니다. 자동 시작 설정은 유지됩니다.")
+            pause(message: "단축어 연결 준비 취소 · 활성화 설정 유지")
         }
         if shortcutPreparationID == request {
             shortcutPreparation = nil
@@ -391,7 +391,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         guard recordingWaitID == request else { return }
         recordingWait?.cancel()
         pauseRecordingWaitGeneration(request: request,
-                                     message: "단축어의 녹음 대기를 취소했습니다. 자동 시작 설정은 유지됩니다.")
+                                     message: "단축어 녹음 대기 취소 · 활성화 설정 유지")
         recordingWaitResume?.cancel()
     }
 
@@ -403,7 +403,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             break // A new generation belongs to a different user action.
         default:
             pauseRecordingWaitGeneration(request: request,
-                                         message: "단축어의 녹음 대기를 마쳤습니다. 자동 시작 설정은 유지됩니다.")
+                                         message: "단축어 녹음 대기 종료 · 활성화 설정 유지")
         }
         recordingWaitResume?.cancel()
         let message: String
@@ -451,12 +451,12 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             // A canceled foreground task must release preparation and location
             // support, without allowing an old task to stop a newer request.
             if preparationID == request && isPreparing && Task.isCancelled {
-                pause(message: "통화 감시 준비를 취소했습니다. 자동 시작 설정은 유지됩니다.")
+                pause(message: "AirRec 연결 준비 취소 · 활성화 설정 유지")
             }
         }
-        setStatus("페어링 파일과 LocalDevVPN 연결을 확인하고 있습니다.")
+        setStatus("페어링 파일과 LocalDevVPN 연결 확인")
         guard PairingFileStore.exists else {
-            failActivation(request: request, message: "설정 탭에서 초기 설정을 완료 해 주세요.")
+            failActivation(request: request, message: "설정 탭에서 AirRec 초기 설정을 완료해 주세요.")
             return
         }
 
@@ -486,7 +486,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         }
 
         if standby.isEnabled {
-            setStatus("위치 서비스로 장시간 대기를 준비하고 있습니다.")
+            setStatus("백그라운드 AirRec 준비 중")
             let ready = await standby.startIfEnabled()
             guard preparationID == request, isPreparing, isEnabled, !Task.isCancelled else { return }
             guard ready, standby.isRunning else {
@@ -501,16 +501,16 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             guard let self, self.preparationID == request else { return }
             self.endBackgroundLease()
             if self.standby.isEnabled && self.standby.isRunning {
-                self.recordEvent("일반 백그라운드 시간은 끝났으며 위치 대기 세션을 유지합니다.")
+                self.recordEvent("백그라운드 AirRec 대기 유지")
                 return
             }
-            self.pause(message: "자동 시작 설정은 켜져 있습니다. iOS가 감시를 일시 중단했으며 앱으로 돌아오면 자동 재개합니다.")
+            self.pause(message: "iOS가 감시 일시 중단 · 앱을 열면 재개")
             if UIApplication.shared.applicationState == .active {
                 Task { await self.resumeIfEnabled() }
             }
         }
         guard backgroundTask != .invalid || (standby.isEnabled && standby.isRunning) else {
-            failActivation(request: request, message: "백그라운드 실행 시간을 받지 못했습니다. 잠시 후 다시 켜 주세요.")
+            failActivation(request: request, message: "백그라운드 실행 불가 · 잠시 후 다시 활성화해 주세요.")
             return
         }
 
@@ -529,7 +529,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         activationError = nil
         isEnabled = false
         defaults.set(false, forKey: Self.enabledKey)
-        pause(message: "자동 시작을 껐습니다. 이미 시작된 기본 녹음은 통화 화면에서 중지할 수 있습니다.")
+        pause(message: "AirRec 비활성화됨")
     }
 
     private func failActivation(request: UUID, message: String) {
@@ -579,8 +579,8 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     }
 
     private var waitingStatus: String {
-        (standby.isEnabled && standby.isRunning) ? "통화 연결을 기다립니다. 위치 서비스를 이용한 장시간 대기 중입니다."
-            : "통화 연결을 기다립니다. 백그라운드 허용 시간 안에서 동작합니다."
+        (standby.isEnabled && standby.isRunning) ? "통화 대기 · 백그라운드 AirRec 사용 중"
+            : "통화 대기 · iOS 기본 허용 시간 적용"
     }
 
     private func startStandbyChecks() {
@@ -601,11 +601,11 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         guard isRunning, standby.isEnabled else { return }
         let now = Date()
         if let lastStandbyCheck, now.timeIntervalSince(lastStandbyCheck) > 75 {
-            recordEvent("대기 실행 점검에 \(Int(now.timeIntervalSince(lastStandbyCheck)))초 공백이 있었습니다. 공백 중 감시 여부는 확인되지 않았습니다.")
+            recordEvent("감시 점검 공백 \(Int(now.timeIntervalSince(lastStandbyCheck)))초 · 당시 상태 미확인")
         }
         lastStandbyCheck = now
         if !standby.isRunning {
-            pause(message: "위치 대기 세션이 중지되어 통화 감시를 일시 중지했습니다. 자동 시작 설정은 유지됩니다.")
+            pause(message: "백그라운드 AirRec 중단 · 활성화 설정 유지")
         }
     }
 
@@ -630,7 +630,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     private func evaluate() {
         guard isRunning else { return }
         if standby.isEnabled && !standby.isRunning {
-            pause(message: standby.status + " 자동 시작 설정은 유지됩니다.")
+            pause(message: standby.status + " · 활성화 설정 유지")
             return
         }
         updateCalls()
@@ -645,18 +645,18 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         case .inspect:
             guard let inspection else { return }
             guard gate.permits(inspection) else {
-                setStatus("잠금을 해제하고 기본 통화 화면을 열어 두세요.")
+                setStatus("잠금 해제 및 기본 통화 화면 열기 필요")
                 return
             }
             inspect(inspection)
         case .expired:
-            setStatus("이번 통화의 준비 시간이 끝났습니다. 자동으로 다시 누르지 않습니다.")
+            setStatus("녹음 준비 시간 초과 · 이번 통화 재시도 없음")
         case .multipleCalls:
-            setStatus("활성 통화가 여럿이어서 자동 시작을 건너뜁니다.")
+            setStatus("활성 통화가 여러 건 · 자동 녹음 건너뜀")
         case .held:
-            setStatus("보류 중인 통화에서는 자동 시작하지 않습니다.")
+            setStatus("보류 중인 통화 · 자동 녹음 대기")
         case .connecting:
-            setStatus("통화가 연결되기를 기다립니다.")
+            setStatus("통화 연결 대기")
         case .noCall:
             setStatus(waitingStatus)
         default: break
@@ -715,25 +715,25 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         case .success(.waiting(let detail)):
             setStatus(detail)
         case .success(.openedMore):
-            setStatus("더 보기를 열었습니다. 보이는 통화 녹음 항목을 확인합니다.")
+            setStatus("더 보기 열림 · 녹음 버튼 확인")
         case .success(.startSubmitted):
             recordingResults[inspection.callID] = .init(outcome: .submittedUnconfirmed, generation: inspection.generation)
-            setStatus("녹음 요청은 전달됐지만 시작 표식을 자동 확인하지 못했습니다. 실제 타이머를 확인하세요. 이번 통화에는 다시 누르지 않습니다.")
+            setStatus("녹음 요청 전달 · 시작 미확인 · 재시도 없음")
         case .success(.alreadyRecording):
             recordingResults[inspection.callID] = .init(outcome: .alreadyRecording, generation: inspection.generation)
             gate.markAlreadyRecording(inspection)
-            setStatus("이미 녹음 중이어서 자동 시작을 건너뛰었습니다.")
+            setStatus("이미 녹음 중 · 자동 시작 건너뜀")
         case .success(.recordingConfirmed):
             recordingResults[inspection.callID] = .init(outcome: .confirmed, generation: inspection.generation)
             gate.markAlreadyRecording(inspection)
-            setStatus("기본 전화 화면에서 녹음 중 상태를 확인했습니다.")
+            setStatus("통화 녹음 시작 확인")
         case .failure(let error):
             // Never emit native exception text: it can contain private UI text.
             if gate.startWasReserved(inspection) {
                 recordingResults[inspection.callID] = .init(outcome: .failedAfterReservation, generation: inspection.generation)
-                setStatus("녹음 시작 요청의 결과를 확인하지 못했습니다. 이번 통화에는 다시 누르지 않습니다.")
+                setStatus("녹음 요청 결과 미확인 · 재시도 없음")
             } else {
-                setStatus("통화 화면 검사에 실패했습니다. 준비 시간 안에서 다시 확인합니다.")
+                setStatus("통화 화면 확인 실패 · 재시도 예정")
             }
             if let detail = AirRecordAXClient.diagnostic(for: error) {
                 recordEvent("접근성 검사: \(detail)")

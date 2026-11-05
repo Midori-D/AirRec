@@ -10,9 +10,8 @@ struct AirRecordContactView: View {
     let isSelected: Bool
     @Environment(\.scenePhase) private var scenePhase
 
-    private let profileURL = URL(string: "https://github.com/Midori-D")!
-    private let projectURL = URL(string: "https://github.com/Midori-D/CallTap")!
-    private let issuesURL = URL(string: "https://github.com/Midori-D/CallTap/issues")!
+    private let projectURL = URL(string: "https://github.com/Midori-D/AirRec")!
+    private let issuesURL = URL(string: "https://github.com/Midori-D/AirRec/issues")!
 
     var body: some View {
         AirRecordPage(accent: accent) {
@@ -48,7 +47,6 @@ struct AirRecordContactView: View {
         AirRecordCard {
             AirRecordHeading("개발자", systemImage: "person.crop.circle", tint: accent)
             Text("Midori-D").font(.title2.weight(.semibold))
-            contactLink("GitHub 프로필", systemImage: "person.crop.circle", destination: profileURL)
             Divider()
             contactLink("AirRec 프로젝트", systemImage: "chevron.left.forwardslash.chevron.right", destination: projectURL)
         }

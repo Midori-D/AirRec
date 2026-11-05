@@ -40,7 +40,7 @@ enum AirRecordAXClient {
                               shouldContinue: @escaping () -> Bool,
                               reserveMore: @escaping () -> Bool,
                               reserveStart: @escaping () -> Bool) throws -> AirRecordAXOutcome {
-        guard shouldContinue() else { return .waiting("현재 통화 상태를 다시 확인합니다.") }
+        guard shouldContinue() else { return .waiting("통화 상태 재확인") }
         DDIMounter.primeCryptoProvider()
         var pairing: OpaquePointer?
         try check("페어링 파일 읽기") { rp_pairing_file_read(pairingPath, &pairing) }
@@ -77,7 +77,7 @@ enum AirRecordAXClient {
             }
         }
         switch outcome {
-        case 0: return .waiting("잠금을 해제하고 기본 통화 화면을 열어 두세요.")
+        case 0: return .waiting("잠금 해제 및 기본 통화 화면 열기 필요")
         case 1: return .openedMore
         case 2: return .startSubmitted
         case 3: return .alreadyRecording
@@ -87,17 +87,17 @@ enum AirRecordAXClient {
             let reason = afterMore ? outcome - 100 : outcome
             let detail: String
             switch reason {
-            case 10: detail = "통화 녹음 항목이 나타나기를 기다립니다."
-            case 11: detail = "보이는 후보가 여러 개여서 누르지 않았습니다."
-            case 12: detail = "버튼이 전환 중이어서 다시 확인합니다."
-            case 13: detail = "버튼이 활성화되어 보이기를 기다립니다."
-            case 14: detail = "메뉴 위치가 안정되기를 기다립니다."
-            case 15: detail = "버튼 위치 확인이 일치하지 않아 누르지 않았습니다."
-            case 16: detail = "녹음 상태를 확정할 수 없어 누르지 않았습니다."
-            case 17: detail = "현재 통화·잠금·준비 시간을 다시 확인합니다."
-            default: detail = "기본 통화 화면이 바뀌어 다시 확인합니다."
+            case 10: detail = "녹음 버튼 표시 대기"
+            case 11: detail = "녹음 버튼 후보가 여러 개 · 입력 보류"
+            case 12: detail = "녹음 버튼 전환 대기"
+            case 13: detail = "녹음 버튼 활성화 대기"
+            case 14: detail = "메뉴 위치 안정화 대기"
+            case 15: detail = "녹음 버튼 위치 불일치 · 입력 보류"
+            case 16: detail = "녹음 상태 미확인 · 입력 보류"
+            case 17: detail = "통화·잠금·준비 시간 재확인"
+            default: detail = "통화 화면 변경 · 재확인"
             }
-            return .waiting((afterMore ? "더 보기 이후: " : "") + detail)
+            return .waiting((afterMore ? "더 보기 · " : "") + detail)
         default: throw AirRecordAXError(message: "알 수 없는 접근성 검사 결과입니다.")
         }
     }
@@ -116,7 +116,7 @@ enum AirRecordAXClient {
         if let range = raw.range(of: "CallTap AX:") {
             throw AirRecordAXError(message: String(raw[range.lowerBound...].prefix(180)))
         }
-        throw AirRecordAXError(message: "\(operation) 실패 (코드 \(code)). VPN·개발자 디스크를 확인하세요.")
+        throw AirRecordAXError(message: "\(operation) 실패 (코드 \(code)). LocalDevVPN·개발자 디스크 확인 필요")
     }
 }
 #endif

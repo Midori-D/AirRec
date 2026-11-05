@@ -59,7 +59,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
 
     @Published private(set) var isEnabled: Bool
     @Published private(set) var isRunning = false
-    @Published private(set) var status = "장시간 대기가 꺼져 있습니다."
+    @Published private(set) var status = "백그라운드 AirRec 꺼짐"
     @Published private(set) var backgroundRefreshStatusText = "확인 중"
     @Published private(set) var lowPowerModeEnabled = false
     @Published private(set) var indicatorMinimizationEnabled: Bool
@@ -107,7 +107,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         super.init()
         indicatorPolicy.setMinimizationEnabled(indicatorMinimizationEnabled)
         refreshEnvironment()
-        if isEnabled { status = "장시간 대기 설정이 유지되어 있습니다. 앱에서 준비해 주세요." }
+        if isEnabled { status = "백그라운드 AirRec 설정 유지 · 활성화 대기" }
     }
 
     /// Saves only the user's explicit preference. Starting and permissions are
@@ -117,9 +117,9 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         defaults.set(enabled, forKey: Self.enabledKey)
         if !enabled {
             stop()
-            status = "장시간 대기가 꺼져 있습니다."
+            status = "백그라운드 AirRec 꺼짐"
         } else if !isRunning {
-            status = "위치 서비스로 장시간 대기를 준비합니다. 위치 좌표는 사용·저장·전송하지 않습니다."
+            status = "백그라운드 AirRec 준비 중"
         }
     }
 
@@ -142,26 +142,26 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
             backgroundPermissionRequestPending = true
             permissionWhenInUseRequestSent = true
             authorizationHint = nil
-            status = "위치 권한 선택을 기다립니다. ‘앱을 사용하는 동안 허용’을 선택해 주세요."
+            status = "위치 권한 대기 · ‘앱을 사용하는 동안 허용’을 선택해 주세요."
             refreshAuthorizationPresentation()
-            onEvent?("백그라운드 설정을 켜 기본 위치 권한을 요청했습니다.")
+            onEvent?("백그라운드 AirRec 위치 권한 요청")
             permissionManager.requestWhenInUseAuthorization()
         case .waitForDecision:
             backgroundPermissionRequestPending = true
-            status = "이미 요청한 기본 위치 권한의 선택을 기다립니다."
+            status = "위치 권한 선택 대기"
         case .showSettings:
             authorizationHint = "권한 창을 다시 표시할 수 없는 상태입니다. iOS 설정에서 위치 권한을 확인하세요."
-            status = "기본 위치 권한이 없어 백그라운드 대기를 준비하지 못했습니다. iOS 설정에서 확인하세요."
+            status = "위치 권한 없음 · iOS 설정에서 허용해 주세요."
             refreshAuthorizationPresentation()
         case .requireForeground:
-            status = "기본 위치 권한을 요청하려면 AirRec을 화면에 연 상태에서 백그라운드 설정을 다시 켜 주세요."
+            status = "위치 권한 필요 · AirRec을 열고 다시 켜 주세요."
         case .unsupportedEnvironment:
-            status = "백그라운드 위치 권한은 SideStore에 독립 설치한 AirRec에서 준비하세요."
+            status = "백그라운드 위치 권한 · SideStore 독립 설치 필요"
         case .missingUsageDescription:
-            status = "이 설치에는 기본 위치 권한 설명이 없습니다. 새 IPA를 설치하세요."
+            status = "위치 권한 설정 누락 · 새 IPA를 설치해 주세요."
         case .none:
             if isEnabled && !isRunning {
-                status = "위치 권한을 확인했습니다. 연결 준비 후 백그라운드 대기를 시작할 수 있습니다."
+                status = "위치 권한 확인 · AirRec 연결 대기"
             }
         }
         return plan
@@ -178,14 +178,14 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
                 if UIApplication.shared.applicationState == .active { return true }
             case .denied, .restricted, .unknown:
                 authorizationHint = "iOS 설정에서 위치 권한을 확인하세요. 기본 권한 요청으로 ‘항상 허용’을 자동 요청하지 않습니다."
-                status = "기본 위치 권한을 확인하지 못해 백그라운드 대기를 준비하지 못했습니다. iOS 설정에서 확인하세요."
+                status = "위치 권한 미확인 · iOS 설정에서 확인해 주세요."
                 refreshAuthorizationPresentation()
                 return false
             case .notDetermined:
                 break
             }
             if ProcessInfo.processInfo.systemUptime >= deadline {
-                status = "위치 권한 선택 또는 앱 화면 활성화를 확인하지 못했습니다. 권한을 확인한 뒤 홈에서 연결을 다시 준비하세요."
+                status = "위치 준비 시간 초과 · 권한 확인 후 홈에서 다시 활성화해 주세요."
                 return false
             }
             do { try await Task.sleep(nanoseconds: 200_000_000) }
@@ -212,8 +212,8 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         indicatorPolicy.setMinimizationEnabled(enabled)
         refreshAuthorizationPresentation()
         onEvent?(enabled
-                 ? "위치 표시 최소화를 선택했습니다. 실제 ‘항상 허용’ 권한이 확인될 때만 끄기를 요청합니다."
-                 : "위치 표시를 기본 모드로 되돌렸습니다.")
+                 ? "위치 표시 숨기기 설정 켜짐"
+                 : "위치 표시 숨기기 설정 꺼짐")
     }
 
     /// Called only by an explicit foreground button. Authorization callbacks,
@@ -234,7 +234,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         case .notDetermined:
             let purpose = Bundle.main.object(forInfoDictionaryKey: "NSLocationWhenInUseUsageDescription") as? String ?? ""
             guard !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                authorizationHint = "이 설치에는 기본 위치 권한 설명이 없습니다. 새 IPA를 설치하세요."
+                authorizationHint = "위치 권한 설정 누락 · 새 IPA를 설치해 주세요."
                 refreshAuthorizationPresentation()
                 return
             }
@@ -287,10 +287,10 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
                 self.backgroundPermissionRequestPending = false
                 if self.isEnabled && self.policy.session == nil {
                     if self.backgroundPermissionAuthorization == .authorized {
-                        self.status = "위치 권한을 확인했습니다. 연결 준비 후 백그라운드 대기를 시작할 수 있습니다."
+                        self.status = "위치 권한 확인 · AirRec 연결 대기"
                     } else {
                         self.authorizationHint = "iOS 설정에서 위치 권한을 확인하세요. 앱에서 권한 창을 반복 표시하지 않습니다."
-                        self.status = "기본 위치 권한이 없어 백그라운드 대기를 준비하지 못했습니다. iOS 설정에서 확인하세요."
+                        self.status = "위치 권한 없음 · iOS 설정에서 허용해 주세요."
                         self.refreshAuthorizationPresentation()
                     }
                 }
@@ -306,20 +306,20 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     func startIfEnabled() async -> Bool {
         guard isEnabled, !Task.isCancelled else { return false }
         guard !isLiveContainer else {
-            fail("장시간 대기는 SideStore에 독립 설치한 AirRec에서 사용하세요. LiveContainer 내부 실행은 지원하지 않습니다.")
+            fail("백그라운드 AirRec · SideStore 독립 설치 필요")
             return false
         }
         if isRunning && policy.isReady { return true }
 
         if policy.session == nil {
             guard UIApplication.shared.applicationState == .active else {
-                status = "장시간 대기를 시작하려면 AirRec을 화면에 열어 주세요."
+                status = "백그라운드 준비 · AirRec을 열어 주세요."
                 return false
             }
             let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
             let purpose = Bundle.main.object(forInfoDictionaryKey: "NSLocationWhenInUseUsageDescription") as? String ?? ""
             guard modes.contains("location"), !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                fail("이 설치에는 장시간 대기용 위치 서비스 설정이 없습니다. 새 IPA를 독립 설치해 주세요.")
+                fail("백그라운드 위치 설정 누락 · 새 IPA를 독립 설치해 주세요.")
                 return false
             }
 
@@ -349,7 +349,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         guard let id = policy.session else { return false }
         while isEnabled && policy.matches(id) {
             if Task.isCancelled {
-                fail("장시간 대기 준비를 취소했습니다. 설정은 유지됩니다.")
+                fail("백그라운드 준비 취소 · 설정 유지")
                 return false
             }
             // Closing the system permission sheet can deliver authorization
@@ -361,12 +361,12 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
             guard policy.matches(id), isEnabled else { return false }
             if isRunning && policy.isReady { return true }
             if ProcessInfo.processInfo.systemUptime >= startupDeadline {
-                fail("위치 서비스의 새 응답을 확인하지 못했습니다. 권한과 위치 서비스를 확인한 뒤 앱에서 다시 준비하세요.")
+                fail("위치 서비스 응답 시간 초과 · 권한과 위치 서비스를 확인해 주세요.")
                 return false
             }
             do { try await Task.sleep(nanoseconds: 200_000_000) }
             catch {
-                if policy.matches(id) { fail("장시간 대기 준비를 취소했습니다. 설정은 유지됩니다.") }
+                if policy.matches(id) { fail("백그라운드 준비 취소 · 설정 유지") }
                 return false
             }
         }
@@ -377,7 +377,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     /// Owner-initiated cleanup does not recursively call onStopped.
     func stop() {
         endSession()
-        status = isEnabled ? "장시간 대기가 중지되어 있습니다. 앱에서 다시 준비하세요." : "장시간 대기가 꺼져 있습니다."
+        status = isEnabled ? "백그라운드 AirRec 중지됨" : "백그라운드 AirRec 꺼짐"
     }
 
     private func authorizationChanged(for id: UUID) {
@@ -388,34 +388,34 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         switch manager.authorizationStatus {
         case .notDetermined:
             guard UIApplication.shared.applicationState != .background else {
-                fail("위치 권한은 앱을 화면에 연 상태에서 허용해 주세요.")
+                fail("위치 권한 필요 · AirRec을 열고 허용해 주세요.")
                 return
             }
             guard UIApplication.shared.applicationState == .active else {
-                status = "위치 권한을 준비하려면 앱 화면이 활성화될 때까지 기다려 주세요."
+                status = "위치 권한 요청 · AirRec 화면 대기"
                 return
             }
-            status = "장시간 대기에 위치 서비스를 사용합니다. ‘앱을 사용하는 동안 허용’을 선택해 주세요. 정밀 위치는 필요하지 않습니다."
+            status = "위치 권한 요청 · ‘앱을 사용하는 동안 허용’을 선택해 주세요."
             guard !authorizationRequested, !permissionWhenInUseRequestSent else { return }
             authorizationRequested = true
             manager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
             guard !updatesStarted else { return }
             guard UIApplication.shared.applicationState != .background else {
-                fail("위치 서비스 시작 전에 앱이 백그라운드로 이동했습니다. AirRec을 열고 다시 준비하세요.")
+                fail("위치 서비스 시작 중단 · AirRec을 다시 열어 주세요.")
                 return
             }
             guard UIApplication.shared.applicationState == .active else {
-                status = "위치 권한을 확인했습니다. 앱 화면이 활성화되면 장시간 대기를 시작합니다."
+                status = "위치 권한 확인 · AirRec 화면 대기"
                 return
             }
             updatesStarted = true
-            status = "위치 서비스의 새 응답을 기다립니다. 아직 장시간 대기 준비가 완료되지 않았습니다."
+            status = "위치 서비스 첫 응답 대기"
             manager.startUpdatingLocation()
         case .denied, .restricted:
-            fail("위치 서비스 권한이 없어 장시간 대기를 유지할 수 없습니다. 설정에서 위치 접근을 허용한 뒤 다시 준비하세요.")
+            fail("위치 권한 없음 · iOS 설정에서 허용해 주세요.")
         @unknown default:
-            fail("위치 서비스 권한 상태를 확인할 수 없어 장시간 대기를 중지했습니다.")
+            fail("위치 권한 미확인 · 백그라운드 AirRec 중지")
         }
     }
 
@@ -432,8 +432,8 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         isRunning = true
         lastTransientError = false
         if !wasReady {
-            status = "장시간 대기 세션이 준비됐습니다. 위치 표시가 나타날 수 있으며 좌표는 사용·저장·전송하지 않습니다."
-            onEvent?("위치 서비스의 새 응답을 확인해 장시간 대기를 준비했습니다.")
+            status = "백그라운드 AirRec 활성화됨"
+            onEvent?(status)
             onReady?()
         }
     }
@@ -443,18 +443,18 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         if code == CLError.locationUnknown.rawValue {
             if !lastTransientError {
                 lastTransientError = true
-                onEvent?("위치 서비스가 일시적으로 신호를 확인하지 못했습니다. 좌표는 사용하지 않습니다.")
+                onEvent?("위치 신호 일시 미확인")
             }
             return
         }
         fail(code == CLError.denied.rawValue
-             ? "위치 서비스 접근이 중단되어 장시간 대기를 중지했습니다. 권한을 확인한 뒤 앱에서 다시 준비하세요."
-             : "위치 서비스 오류로 장시간 대기를 중지했습니다. 앱에서 다시 준비하세요.")
+             ? "위치 접근 중단 · 권한을 확인해 주세요."
+             : "위치 서비스 오류 · AirRec을 다시 열어 주세요.")
     }
 
     private func receivedPause(for id: UUID) {
         guard policy.pause(for: id) else { return }
-        fail("iOS가 위치 서비스를 일시 중지했습니다. 장시간 대기를 다시 준비하려면 AirRec을 열어 주세요.")
+        fail("iOS가 위치 서비스 일시 중지 · AirRec을 다시 열어 주세요.")
     }
 
     func refreshEnvironment() {
@@ -502,10 +502,10 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     private func reportEnvironment() {
         refreshEnvironment()
         if lowPowerModeEnabled {
-            onEvent?("저전력 모드가 켜져 있습니다. 장시간 대기와 배터리 사용 결과를 확인하세요.")
+            onEvent?("저전력 모드 켜짐")
         }
         if UIApplication.shared.backgroundRefreshStatus != .available {
-            onEvent?("백그라운드 앱 새로 고침: " + backgroundRefreshStatusText + ". 이 설정만으로 지속 실행이나 자동 복구를 제공하지 않습니다.")
+            onEvent?("백그라운드 앱 새로 고침: " + backgroundRefreshStatusText)
         }
     }
 
