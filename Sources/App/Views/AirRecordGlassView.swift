@@ -16,6 +16,7 @@ struct AirRecordGlassView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedTab = AirRecordTab.home
+    @State private var showCompactHomeTitle = false
     @State private var showMount = false
     @State private var shortcutOpeningError: String?
 
@@ -73,6 +74,9 @@ struct AirRecordGlassView: View {
     private var homeScreen: some View {
         AirRecordPage(accent: accent) {
             brandHeader
+                .onScrollVisibilityChange(threshold: 0.1) { isVisible in
+                    showCompactHomeTitle = !isVisible
+                }
             monitoringCard
             standbySummary
             AirRecordShortcutStatusView(accent: accent)
@@ -83,8 +87,8 @@ struct AirRecordGlassView: View {
             AirRecordPlannedFeatureView(title: "AirBeep (통화 녹음 고지 제거)", systemImage: "speaker.slash", accent: accent)
             AirRecordPlannedFeatureView(title: "AirBeep2 (통화 녹음 카운트다운 제거)", systemImage: "timer", accent: accent)
         }
-        .navigationTitle("AirRec")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationTitle(showCompactHomeTitle ? "AirRec" : "")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var brandHeader: some View {
@@ -96,8 +100,13 @@ struct AirRecordGlassView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
                     .accessibilityHidden(true)
             }
-            AirRecordVersionLabel(version: version)
-                .font(.subheadline)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("AirRec")
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .accessibilityAddTraits(.isHeader)
+                AirRecordVersionLabel(version: version)
+                    .font(.subheadline)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 10)
@@ -293,10 +302,13 @@ struct AirRecordGlassView: View {
 
     private var shortcutCard: some View {
         AirRecordCard {
-            AirRecordHeading("단축어 자동화", systemImage: "square.stack.3d.up", tint: accent)
-            Text("기존 발신 단축어를 열어 자동화 동작을 확인하세요.")
-                .font(.subheadline).foregroundStyle(.secondary)
-            Button("단축어 열기", systemImage: "arrow.up.forward.app") { openOutgoingShortcut() }
+            AirRecordHeading("AirRec 자동화", systemImage: "square.stack.3d.up", tint: accent)
+            Link(destination: URL(string: "https://www.icloud.com/shortcuts/b888fa97da424299aa6cc67cbc4c7402")!) {
+                Label("AirRec(발신) 단축어 추가", systemImage: "plus.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered).controlSize(.large)
+            Button("추가한 단축어 열기", systemImage: "arrow.up.forward.app") { openOutgoingShortcut() }
                 .font(.subheadline.weight(.semibold))
             if let shortcutOpeningError {
                 Text(shortcutOpeningError).font(.footnote).foregroundStyle(.orange)
@@ -307,9 +319,9 @@ struct AirRecordGlassView: View {
                     if standby.isLiveContainer {
                         Text("AirRec을 SideStore에 독립 설치한 뒤 단축어 동작을 사용하세요.")
                     }
-                    AirRecordInfoRow("1. 준비하기", value: "AirRec 초기 설정을 마치고 백그라운드 AirRec과 홈의 AirRec을 활성화하세요. 단축어 앱에서 ‘전화 앱이 열릴 때’ LocalDevVPN이 연결되도록 설정하세요.")
+                    AirRecordInfoRow("1. 준비하기", value: "AirRec 초기 설정을 마치고 백그라운드 AirRec과 홈의 AirRec을 활성화하세요. 단축어를 추가한 뒤, 단축어 앱의 자동화에서 ‘전화 앱이 열릴 때’ LocalDevVPN을 연결하고 ‘AirRec(발신)’을 실행하도록 설정하세요.")
                     AirRecordInfoRow("2. Wi-Fi 확인하기", value: "Wi-Fi 네트워크 이름이 있으면 셀룰러 설정을 그대로 두세요. 이름이 비어 있을 때만 AirRec의 ‘발신’ 동작을 실행하세요.")
-                    AirRecordInfoRow("3. 발신을 감지하면 데이터 끄기", value: "‘발신’은 기본 20초, 최대 25초 동안 기다립니다. 결과가 ‘예’일 때만 ‘셀룰러 데이터 끄기 → 발신종료 → 셀룰러 데이터 켜기’를 실행하세요.")
+                    AirRecordInfoRow("3. 발신을 감지하면 데이터 끄기", value: "‘발신’의 최대 대기 시간에 1~180초를 입력할 수 있습니다. 기본값은 20초이며, 25초를 넘기면 대기 중 iOS 진행 표시가 나타날 수 있습니다. 결과가 ‘예’일 때만 ‘셀룰러 데이터 끄기 → 발신종료 → 셀룰러 데이터 켜기’를 실행하세요.")
                     AirRecordInfoRow("4. 통화가 끝나면 데이터 복구하기", value: "‘발신종료’는 활성 통화가 모두 끝날 때까지 기다립니다. 기본 60분, 최대 180분이며 대기 중 진행 표시가 나타납니다. 시간 초과에도 데이터를 복구하도록 ‘켜기’는 종료 결과와 관계없이 실행하세요. 단축어가 중단됐다면 데이터를 직접 켜 주세요.")
                     AirRecordInfoRow("첫 통화 확인", value: "발신 감지는 단축어에서 따로 시험할 수 있습니다. 실제 녹음은 전화 화면의 타이머와 메모 앱에서 확인하세요. 전화 앱을 닫아도 통화는 이어질 수 있으므로 앱이 닫힐 때 VPN을 끄도록 설정하면 녹음 준비가 끊길 수 있습니다.")
                 }

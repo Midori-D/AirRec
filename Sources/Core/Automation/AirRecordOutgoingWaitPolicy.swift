@@ -18,8 +18,9 @@ struct AirRecordOutgoingWaitPolicy {
     enum Decision: Equatable { case waiting, finished(Result) }
 
     static let defaultTimeout: TimeInterval = 20
-    static let maximumTimeout: TimeInterval = 25
+    static let maximumTimeout: TimeInterval = 180
 
+    let startedAt: TimeInterval
     let deadline: TimeInterval
     private var lastObservedAt: TimeInterval
     private var terminal: Result?
@@ -29,6 +30,7 @@ struct AirRecordOutgoingWaitPolicy {
     }
 
     init(startedAt: TimeInterval, timeout: TimeInterval) {
+        self.startedAt = startedAt
         deadline = startedAt + Self.boundedTimeout(timeout)
         lastObservedAt = startedAt
     }

@@ -5,7 +5,7 @@ import Foundation
 
 /// Bridges the system's synchronous cancellation callback to this invocation's
 /// observer task, including cancellation before that task is installed.
-private final class AirRecordCallEndIntentTask: @unchecked Sendable {
+private final class AirRecordIntentTask: @unchecked Sendable {
     private let lock = NSLock()
     private var task: Task<Bool, Never>?
     private var cancelled = false
@@ -40,23 +40,53 @@ private final class AirRecordCallEndIntentTask: @unchecked Sendable {
 }
 
 /// A CallKit observation only; the shortcut chooses what to do with the Bool.
-struct WaitForAirRecordOutgoingCallIntent: AppIntent {
+struct WaitForAirRecordOutgoingCallIntent: LongRunningIntent, CancellableIntent {
     static var title: LocalizedStringResource = "발신"
-    static var description: IntentDescription = "발신이 시작될 때까지 기본 20초, 최대 25초 기다립니다. 이미 단일 발신 중이면 즉시 참을, 발신 없이 시간이 지나면 거짓을 반환합니다. FaceTime 등 CallKit 발신도 감지될 수 있습니다."
+    static var description: IntentDescription = "발신 시작을 기본 20초 기다립니다. 대기 시간은 1~180초로 설정할 수 있습니다. 단일 발신을 감지하면 즉시 예, 시간이 지나면 아니요를 반환합니다. 25초를 넘는 대기에는 iOS 진행 표시가 나타날 수 있으며, FaceTime 등 CallKit 발신도 감지할 수 있습니다."
     static var supportedModes: IntentModes { [.background] }
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
 
-    @Parameter(title: "최대 대기 시간(초)", default: 20)
+    @Parameter(title: "최대 대기 시간(초)", default: 20, controlStyle: .field, inclusiveRange: (1, 180))
     var waitSeconds: Int
 
     @MainActor
     func perform() async -> some IntentResult & ReturnsValue<Bool> {
         AirRecordShortcutPresence.shared.recordActionRun()
         airRecordLog("Outgoing wait intent: started")
-        let outgoing = await AirRecordOutgoingCallWaiter.wait(timeout: TimeInterval(waitSeconds))
+        let seconds = AirRecordOutgoingWaitPolicy.boundedTimeout(TimeInterval(waitSeconds))
+        let outgoing: Bool
+        if seconds <= 25 {
+            outgoing = await AirRecordOutgoingCallWaiter.wait(timeout: seconds)
+        } else {
+            outgoing = await waitForOutgoingInBackground(seconds: seconds)
+        }
         let detected = outgoing && !Task.isCancelled
         airRecordLog("Outgoing wait intent: result=\(detected)")
         return .result(value: detected)
+    }
+
+    @MainActor
+    private func waitForOutgoingInBackground(seconds: TimeInterval) async -> Bool {
+        let displayProgress = progress
+        displayProgress.totalUnitCount = Int64(seconds)
+        displayProgress.completedUnitCount = 0
+        displayProgress.localizedDescription = "발신 대기"
+        displayProgress.localizedAdditionalDescription = "발신하면 다음 동작을 실행합니다."
+        do {
+            let detected = try await runBackgroundWait {
+                await AirRecordOutgoingCallWaiter.wait(timeout: seconds) { elapsed in
+                    displayProgress.completedUnitCount = Int64(elapsed)
+                    displayProgress.localizedAdditionalDescription = "경과 \(Int(elapsed))초 · 최대 \(Int(seconds))초 대기"
+                }
+            }
+            displayProgress.localizedDescription = detected ? "발신 확인됨" : "발신 대기 종료"
+            if detected { displayProgress.completedUnitCount = displayProgress.totalUnitCount }
+            return detected
+        } catch {
+            displayProgress.localizedDescription = "발신 대기 중단됨"
+            airRecordLog("Outgoing wait intent: interrupted")
+            return false
+        }
     }
 }
 
@@ -79,20 +109,39 @@ struct WaitForAirRecordCallEndIntent: LongRunningIntent, CancellableIntent {
         displayProgress.completedUnitCount = 0
         displayProgress.localizedDescription = "발신종료 대기"
         displayProgress.localizedAdditionalDescription = "모든 통화가 끝나면 다음 동작을 실행합니다."
-        let cancellation = AirRecordCallEndIntentTask()
-        defer { cancellation.clear() }
         airRecordLog("Call end wait intent: started")
         do {
-            let ended = try await performBackgroundTask {
+            let confirmed = try await runBackgroundWait {
+                await AirRecordCallEndWaiter.wait(timeout: seconds) { elapsed in
+                    // Progress measures elapsed observation time, not the
+                    // unknown duration or completion percentage of a call.
+                    displayProgress.completedUnitCount = min(
+                        displayProgress.totalUnitCount, Int64(max(0, elapsed).rounded(.down)))
+                    displayProgress.localizedAdditionalDescription = "경과 \(Int(elapsed))초 · 최대 \(Int(seconds / 60))분 대기"
+                }
+            }
+            displayProgress.localizedDescription = confirmed ? "발신종료 확인됨" : "발신종료 대기 중단됨"
+            if confirmed { displayProgress.completedUnitCount = displayProgress.totalUnitCount }
+            airRecordLog("Call end wait intent: result=\(confirmed)")
+            return .result(value: confirmed)
+        } catch {
+            displayProgress.localizedDescription = "발신종료 대기 중단됨"
+            airRecordLog("Call end wait intent: interrupted")
+            return .result(value: false)
+        }
+    }
+}
+
+private extension LongRunningIntent where Self: CancellableIntent {
+    @MainActor
+    func runBackgroundWait(_ wait: @escaping @MainActor @Sendable () async -> Bool) async throws -> Bool {
+        let cancellation = AirRecordIntentTask()
+        defer { cancellation.clear() }
+        do {
+            let result = try await performBackgroundTask {
                 let pending = Task { @MainActor in
                     guard !Task.isCancelled, !cancellation.isCancelled else { return false }
-                    return await AirRecordCallEndWaiter.wait(timeout: seconds) { elapsed in
-                        // Progress measures elapsed observation time, not the
-                        // unknown duration or completion percentage of a call.
-                        displayProgress.completedUnitCount = min(
-                            displayProgress.totalUnitCount, Int64(max(0, elapsed).rounded(.down)))
-                        displayProgress.localizedAdditionalDescription = "경과 \(Int(elapsed))초 · 최대 \(Int(seconds / 60))분 대기"
-                    }
+                    return await wait()
                 }
                 cancellation.install(pending)
                 let value = await withTaskCancellationHandler {
@@ -105,16 +154,10 @@ struct WaitForAirRecordCallEndIntent: LongRunningIntent, CancellableIntent {
             } onCancel: { _ in
                 cancellation.cancel()
             }
-            let confirmed = ended && !cancellation.isCancelled && !Task.isCancelled
-            displayProgress.localizedDescription = confirmed ? "발신종료 확인됨" : "발신종료 대기 중단됨"
-            if confirmed { displayProgress.completedUnitCount = displayProgress.totalUnitCount }
-            airRecordLog("Call end wait intent: result=\(confirmed)")
-            return .result(value: confirmed)
+            return result && !cancellation.isCancelled && !Task.isCancelled
         } catch {
             cancellation.cancel()
-            displayProgress.localizedDescription = "발신종료 대기 중단됨"
-            airRecordLog("Call end wait intent: interrupted")
-            return .result(value: false)
+            throw error
         }
     }
 }

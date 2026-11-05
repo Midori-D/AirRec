@@ -7,8 +7,7 @@ import Foundation
 @MainActor
 final class AirRecordShortcutPresence: ObservableObject {
     static let shared = AirRecordShortcutPresence()
-    // Keep the user's existing workflow editor link across the AirRec rename.
-    static let targetName = "AirRecord(발신)"
+    static let targetName = "AirRec(발신)"
 
     @Published private(set) var lastActionRunAt: Date?
     @Published private(set) var lastEndActionRunAt: Date?

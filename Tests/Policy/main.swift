@@ -578,8 +578,9 @@ do {
     let held = Wait.Call(isOutgoing: true, hasEnded: false, isOnHold: true)
 
     check(Wait.boundedTimeout(0) == 1 && Wait.boundedTimeout(-10) == 1
-          && Wait.boundedTimeout(1000) == 25 && Wait.boundedTimeout(20) == 20,
-          "outgoing waits clamp finite timeouts to one through twenty-five seconds")
+          && Wait.boundedTimeout(1000) == 180 && Wait.boundedTimeout(20) == 20
+          && Wait.boundedTimeout(60) == 60 && Wait.boundedTimeout(180) == 180,
+          "outgoing waits keep the requested seconds within one through one hundred eighty")
     check(Wait.boundedTimeout(.nan) == 20 && Wait.boundedTimeout(.infinity) == 20,
           "outgoing waits use a finite twenty-second default for invalid timeouts")
     var existing = Wait(startedAt: 100, timeout: 20)
@@ -587,6 +588,15 @@ do {
           "an existing single outgoing call immediately satisfies a new wait without requiring connection")
     check(existing.decision(now: 101, calls: [], cancelled: true) == .finished(.outgoing),
           "a completed request is immutable when late cancellation or callbacks arrive")
+
+    var longWait = Wait(startedAt: 100, timeout: 180)
+    check(longWait.decision(now: 126, calls: []) == .waiting,
+          "a configured long outgoing wait survives the previous 25-second cap")
+    check(longWait.decision(now: 279, calls: [outgoing]) == .finished(.outgoing),
+          "outgoing evidence can complete a three-minute wait early")
+    var longDeadline = Wait(startedAt: 100, timeout: 1000)
+    check(longDeadline.decision(now: 280, calls: [outgoing]) == .finished(.timedOut),
+          "outgoing evidence at the three-minute cap is already too late")
 
     var direction = Wait(startedAt: 100, timeout: 20)
     check(direction.decision(now: 100, calls: []) == .waiting,

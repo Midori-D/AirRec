@@ -26,9 +26,10 @@ private final class AirRecordOutgoingWaitCancellation: @unchecked Sendable {
 /// CallKit does not identify the calling app, so this can also detect VoIP calls.
 @MainActor
 enum AirRecordOutgoingCallWaiter {
-    static func wait(timeout: TimeInterval = AirRecordOutgoingWaitPolicy.defaultTimeout) async -> Bool {
+    static func wait(timeout: TimeInterval = AirRecordOutgoingWaitPolicy.defaultTimeout,
+                     onProgress: (@MainActor @Sendable (TimeInterval) -> Void)? = nil) async -> Bool {
         let cancellation = AirRecordOutgoingWaitCancellation()
-        let request = Request(timeout: timeout, cancellation: cancellation)
+        let request = Request(timeout: timeout, cancellation: cancellation, onProgress: onProgress)
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 request.start(continuation, cancelled: Task.isCancelled)
@@ -43,13 +44,16 @@ enum AirRecordOutgoingCallWaiter {
     private final class Request: NSObject, CXCallObserverDelegate {
         private let observer = CXCallObserver()
         private let cancellation: AirRecordOutgoingWaitCancellation
+        private let onProgress: (@MainActor @Sendable (TimeInterval) -> Void)?
         private var policy: AirRecordOutgoingWaitPolicy
         private var continuation: CheckedContinuation<Bool, Never>?
         private var timeoutTask: Task<Void, Never>?
         private var started = false
 
-        init(timeout: TimeInterval, cancellation: AirRecordOutgoingWaitCancellation) {
+        init(timeout: TimeInterval, cancellation: AirRecordOutgoingWaitCancellation,
+             onProgress: (@MainActor @Sendable (TimeInterval) -> Void)?) {
             self.cancellation = cancellation
+            self.onProgress = onProgress
             policy = AirRecordOutgoingWaitPolicy(
                 startedAt: ProcessInfo.processInfo.systemUptime, timeout: timeout)
             super.init()
@@ -71,17 +75,27 @@ enum AirRecordOutgoingCallWaiter {
             observer.setDelegate(self, queue: .main)
             evaluate()
             guard self.continuation != nil else { return }
-            let deadline = policy.deadline
+            // Short waits only need a deadline timer. Long-running intents
+            // refresh progress every second without delaying CallKit callbacks.
+            let interval: TimeInterval = onProgress == nil ? .infinity : 1
             timeoutTask = Task { @MainActor [weak self] in
-                // Include time queued for the actor in the original budget.
-                let remaining = max(0, deadline - ProcessInfo.processInfo.systemUptime)
-                do {
-                    try await Task.sleep(nanoseconds: UInt64((remaining * 1_000_000_000).rounded(.up)))
-                } catch {
-                    return
+                while !Task.isCancelled {
+                    guard let remaining = self?.remainingBudget else { return }
+                    guard remaining > 0 else {
+                        self?.evaluate()
+                        return
+                    }
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64((min(interval, remaining) * 1_000_000_000).rounded(.up)))
+                    } catch { return }
+                    self?.evaluate()
                 }
-                self?.evaluate()
             }
+        }
+
+        private var remainingBudget: TimeInterval? {
+            guard continuation != nil else { return nil }
+            return max(0, policy.deadline - ProcessInfo.processInfo.systemUptime)
         }
 
         func cancel() {
@@ -102,14 +116,19 @@ enum AirRecordOutgoingCallWaiter {
                                                 hasEnded: $0.hasEnded,
                                                 isOnHold: $0.isOnHold)
             }
-            let decision = policy.decision(now: ProcessInfo.processInfo.systemUptime,
-                                           calls: calls, cancelled: cancelled || cancellation.isCancelled)
-            guard case .finished(let result) = decision else { return }
-            self.continuation = nil
-            observer.setDelegate(nil, queue: nil)
-            timeoutTask?.cancel()
-            timeoutTask = nil
-            continuation.resume(returning: result.detectedOutgoing)
+            let now = ProcessInfo.processInfo.systemUptime
+            let decision = policy.decision(now: now, calls: calls,
+                                           cancelled: cancelled || cancellation.isCancelled)
+            switch decision {
+            case .waiting:
+                onProgress?(now - policy.startedAt)
+            case .finished(let result):
+                self.continuation = nil
+                observer.setDelegate(nil, queue: nil)
+                timeoutTask?.cancel()
+                timeoutTask = nil
+                continuation.resume(returning: result.detectedOutgoing && !cancellation.isCancelled)
+            }
         }
     }
 }
