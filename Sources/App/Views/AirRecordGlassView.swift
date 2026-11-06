@@ -58,8 +58,12 @@ struct AirRecordGlassView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .sheet(isPresented: $showMount) { DDIMountView() }
         .task { await monitor.resumeIfEnabled() }
+        .task(id: scenePhase) {
+            if scenePhase == .active { await standbyAlert.refreshPermission() }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await monitor.resumeIfEnabled() } }
+            if phase == .background { monitor.appDidEnterBackground() }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await monitor.resumeIfEnabled() }
@@ -259,9 +263,21 @@ struct AirRecordGlassView: View {
             ))
             .font(.headline)
             .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
-            Text("백그라운드 AirRec을 켜 두면, 종료 신호를 받거나 백그라운드 동작을 3분간 확인하지 못했을 때 알립니다.")
+            Text("홈에서 AirRec이 활성화되고 백그라운드 AirRec에 체크가 있을 때 알림을 예약합니다. iOS가 종료 신호를 전달하지 않으면 마지막 상태 확인에서 약 3분 뒤에 알립니다.")
                 .font(.footnote).foregroundStyle(.secondary)
+            if standbyAlert.isEnabled {
+                Button("알림 테스트", systemImage: "bell.badge") {
+                    Task { await standbyAlert.sendTestNotification() }
+                }
+                .font(.subheadline.weight(.semibold))
+                if let message = standbyAlert.testMessage {
+                    Text(message)
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
             if standbyAlert.needsPermission {
+                Text("iOS 설정에서 알림과 배너를 허용해 주세요.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 Button("알림 설정 열기", systemImage: "arrow.up.forward.app") {
                     guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else { return }
                     UIApplication.shared.open(url)
@@ -270,7 +286,7 @@ struct AirRecordGlassView: View {
             }
             Divider()
             Button { openAppSettings() } label: {
-                Label("위치 권한 설정 열기", systemImage: "arrow.up.forward.app")
+                Label("AirRec 설정 열기", systemImage: "arrow.up.forward.app")
             }
             .font(.subheadline.weight(.semibold))
             Divider()
@@ -339,6 +355,11 @@ struct AirRecordGlassView: View {
                 Text(shortcutOpeningError).font(.footnote).foregroundStyle(.orange)
             }
             Divider()
+            Button("실시간 현황 설정 열기", systemImage: "livephoto") { openAppSettings() }
+                .font(.subheadline.weight(.semibold))
+            Text("다이내믹 아일랜드 진행 표시는 iOS의 ‘실시간 현황’ 설정에서 관리합니다. 단축어에서 표시되는 경우 설정의 ‘단축어’ 항목도 확인해 주세요.")
+                .font(.footnote).foregroundStyle(.secondary)
+            Divider()
             DisclosureGroup("AirRec 자동화란?") {
                 VStack(alignment: .leading, spacing: 12) {
                     if standby.isLiveContainer {
@@ -375,8 +396,6 @@ struct AirRecordGlassView: View {
         AirRecordPage(accent: accent) {
             AirRecordCard {
                 AirRecordHeading("최근 실행 기록", systemImage: "clock.arrow.circlepath", tint: accent)
-                Text("연결·대기·녹음 시작 요청의 상태를 확인합니다.")
-                    .font(.subheadline).foregroundStyle(.secondary)
                 if monitor.recentEvents.isEmpty {
                     ContentUnavailableView("아직 기록이 없습니다", systemImage: "clock",
                                            description: Text("AirRec을 활성화하면 실행 상태가 여기에 표시됩니다."))

@@ -10,8 +10,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AIRRECORD_AUTOMATION"
-    MARKETING_VERSION: "1.2.9"
-    CURRENT_PROJECT_VERSION: 28
+    MARKETING_VERSION: "1.3.0"
+    CURRENT_PROJECT_VERSION: 29
 targets:
   AirRec:
     type: application
