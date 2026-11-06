@@ -12,6 +12,7 @@ private enum AirRecordTab: Hashable {
 struct AirRecordGlassView: View {
     @StateObject private var monitor = AirRecordMonitor.shared
     @StateObject private var standby = AirRecordLocationKeepAlive.shared
+    @StateObject private var standbyAlert = AirRecordStandbyAlert.shared
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -62,6 +63,12 @@ struct AirRecordGlassView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await monitor.resumeIfEnabled() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            monitor.appDidEnterBackground()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
+            standbyAlert.reportTermination()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.backgroundRefreshStatusDidChangeNotification)) { _ in
             standby.refreshEnvironment()
@@ -246,6 +253,22 @@ struct AirRecordGlassView: View {
                 }
             }
             Divider()
+            Toggle("앱 종료 알림", isOn: Binding(
+                get: { standbyAlert.isEnabled },
+                set: { enabled in Task { await standbyAlert.setEnabled(enabled) } }
+            ))
+            .font(.headline)
+            .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
+            Text("백그라운드 AirRec을 켜 두면, 종료 신호를 받거나 백그라운드 동작을 3분간 확인하지 못했을 때 알립니다.")
+                .font(.footnote).foregroundStyle(.secondary)
+            if standbyAlert.needsPermission {
+                Button("알림 설정 열기", systemImage: "arrow.up.forward.app") {
+                    guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .font(.subheadline.weight(.semibold))
+            }
+            Divider()
             Button { openAppSettings() } label: {
                 Label("위치 권한 설정 열기", systemImage: "arrow.up.forward.app")
             }
@@ -303,11 +326,13 @@ struct AirRecordGlassView: View {
     private var shortcutCard: some View {
         AirRecordCard {
             AirRecordHeading("AirRec 자동화", systemImage: "square.stack.3d.up", tint: accent)
+            Divider()
             Link(destination: URL(string: "https://www.icloud.com/shortcuts/b888fa97da424299aa6cc67cbc4c7402")!) {
                 Label("AirRec(발신) 단축어 추가", systemImage: "plus.circle")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.bordered).controlSize(.large)
+            Divider()
             Button("추가한 단축어 열기", systemImage: "arrow.up.forward.app") { openOutgoingShortcut() }
                 .font(.subheadline.weight(.semibold))
             if let shortcutOpeningError {

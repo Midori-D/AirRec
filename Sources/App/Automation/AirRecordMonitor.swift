@@ -165,6 +165,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     private let observer = CXCallObserver()
     private let gate = AirRecordAutomationGate()
     private let standby = AirRecordLocationKeepAlive.shared
+    private let standbyAlert = AirRecordStandbyAlert.shared
     private var timer: Timer?
     private var standbyTimer: Timer?
     private var lastStandbyCheck: Date?
@@ -215,12 +216,20 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
 
     func resumeIfEnabled() async {
         standby.refreshEnvironment()
-        guard isEnabled, UIApplication.shared.applicationState == .active else { return }
+        guard UIApplication.shared.applicationState == .active else { return }
+        standbyAlert.disarm()
+        guard isEnabled else { return }
         noteStandbyProgress()
         await prepare()
     }
 
+    func appDidEnterBackground() {
+        guard isRunning, standby.isEnabled, standby.isRunning else { return }
+        standbyAlert.arm()
+    }
+
     func setLocationStandbyEnabled(_ enabled: Bool) async {
+        if !enabled { standbyAlert.disarm() }
         // Revoke any in-flight input before changing execution support. The
         // call policy retains all recording reservations across this restart.
         pause(message: activationError ?? "백그라운드 AirRec 설정 변경")
@@ -521,11 +530,13 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         isRunning = true
         activationError = nil
         startStandbyChecks()
+        if UIApplication.shared.applicationState == .background { appDidEnterBackground() }
         setStatus(waitingStatus)
         evaluate()
     }
 
     func stop() {
+        standbyAlert.disarm()
         activationError = nil
         isEnabled = false
         defaults.set(false, forKey: Self.enabledKey)
@@ -588,8 +599,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         standbyTimer = nil
         guard standby.isEnabled, standby.isRunning else { return }
         lastStandbyCheck = Date()
-        // Diagnostic only. This timer does not request background runtime or
-        // treat a stationary location-update interval as a session failure.
+        // Check progress and refresh the optional alert while iOS runs AirRec.
         let check = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.noteStandbyProgress() }
         }
@@ -606,6 +616,8 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         lastStandbyCheck = now
         if !standby.isRunning {
             pause(message: "백그라운드 AirRec 중단 · 활성화 설정 유지")
+        } else if UIApplication.shared.applicationState == .background {
+            standbyAlert.refresh()
         }
     }
 
