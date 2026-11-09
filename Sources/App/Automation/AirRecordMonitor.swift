@@ -148,6 +148,10 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     @Published private(set) var status = "AirRec 비활성화됨"
     @Published private(set) var recentEvents: [String] = []
 
+    var isMonitoringReady: Bool {
+        isRunning && (!standby.isEnabled || standby.isRunning)
+    }
+
     var diagnosticSummary: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         return (["AirRec \(version)", "AirRec 활성화 설정: \(isEnabled ? "켜짐" : "꺼짐")",
@@ -529,6 +533,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         isPreparing = false
         isRunning = true
         activationError = nil
+        standbyAlert.resetStatusReminder()
         startStandbyChecks()
         if UIApplication.shared.applicationState == .background { appDidEnterBackground() }
         setStatus(waitingStatus)

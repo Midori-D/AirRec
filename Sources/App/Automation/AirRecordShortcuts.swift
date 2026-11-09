@@ -162,6 +162,22 @@ private extension LongRunningIntent where Self: CancellableIntent {
     }
 }
 
+struct CheckAirRecordStatusIntent: AppIntent {
+    static var title: LocalizedStringResource = "AirRec 상태 확인"
+    static var description: IntentDescription = "통화 감시가 준비돼 있으면 ‘예’를 반환합니다. 감시가 멈췄으면 ‘아니요’를 반환하고, 종료 알림이 켜져 있으면 AirRec을 다시 열도록 안내합니다."
+    static var supportedModes: IntentModes { [.background] }
+    static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
+
+    @MainActor
+    func perform() async -> some IntentResult & ReturnsValue<Bool> {
+        let monitor = AirRecordMonitor.shared
+        if !monitor.isMonitoringReady {
+            await AirRecordStandbyAlert.shared.remindToOpenAirRec()
+        }
+        return .result(value: monitor.isMonitoringReady)
+    }
+}
+
 struct AirRecordShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -175,6 +191,12 @@ struct AirRecordShortcuts: AppShortcutsProvider {
             phrases: ["\(.applicationName) 발신종료"],
             shortTitle: "발신종료",
             systemImageName: "phone.down"
+        )
+        AppShortcut(
+            intent: CheckAirRecordStatusIntent(),
+            phrases: ["\(.applicationName) 상태 확인"],
+            shortTitle: "상태 확인",
+            systemImageName: "checkmark.shield"
         )
     }
 }

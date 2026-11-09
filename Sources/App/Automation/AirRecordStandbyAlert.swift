@@ -11,13 +11,14 @@ final class AirRecordStandbyAlert: ObservableObject {
     @Published private(set) var isEnabled = UserDefaults.standard.bool(forKey: AirRecordStandbyAlert.preferenceKey)
     @Published private(set) var isRequestingPermission = false
     @Published private(set) var needsPermission = false
-    @Published private(set) var testMessage: String?
 
     private static let preferenceKey = "AirRecord.standbyAlert.enabled"
     private static let notificationID = "AirRecord.standbyAlert"
-    private static let testNotificationID = "AirRecord.standbyAlert.test"
+    private static let statusNotificationID = "AirRecord.monitoringStatus"
+    private static let statusReminderKey = "AirRecord.monitoringStatus.reminder"
     private static let graceSeconds = 180
     private let center = UNUserNotificationCenter.current()
+    private let defaults = UserDefaults.standard
     private var deadline: ContinuousClock.Instant?
 
     func setEnabled(_ enabled: Bool) async {
@@ -30,12 +31,11 @@ final class AirRecordStandbyAlert: ObservableObject {
             guard granted else { return }
         } else {
             disarm()
-            center.removePendingNotificationRequests(withIdentifiers: [Self.testNotificationID])
+            resetStatusReminder()
             needsPermission = false
-            testMessage = nil
         }
         isEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: Self.preferenceKey)
+        defaults.set(enabled, forKey: Self.preferenceKey)
         await refreshPermission()
     }
 
@@ -46,27 +46,26 @@ final class AirRecordStandbyAlert: ObservableObject {
         needsPermission = settings.alertSetting != .enabled
     }
 
-    func sendTestNotification() async {
-        guard isEnabled else { return }
-        await refreshPermission()
-        guard isEnabled else { return }
-        guard !needsPermission else {
-            testMessage = "시험 알림을 받으려면 iOS 알림과 배너를 허용해 주세요."
-            return
-        }
-        let request = notification(id: Self.testNotificationID, title: "AirRec 시험 알림",
-                                   body: "AirRec 알림을 받을 수 있어요.", delay: 5)
+    func remindToOpenAirRec() async {
+        guard isEnabled, !Task.isCancelled, defaults.string(forKey: Self.statusReminderKey) == nil else { return }
+        let token = UUID().uuidString
+        defaults.set(token, forKey: Self.statusReminderKey)
+        let request = notification(id: Self.statusNotificationID, title: "AirRec을 열어 주세요",
+                                   body: "통화 감시가 대기 중이에요. AirRec을 열어 자동 녹음을 준비해 주세요.", delay: 1)
         do {
             try await center.add(request)
-            if isEnabled {
-                testMessage = "5초 뒤 시험 알림이 예약됐습니다. 지금 홈 화면으로 나가 확인해 주세요."
-            } else {
-                center.removePendingNotificationRequests(withIdentifiers: [Self.testNotificationID])
-            }
         } catch {
-            if isEnabled { testMessage = "시험 알림 예약에 실패했습니다. iOS의 알림 설정을 확인해 주세요." }
-            airRecordLog("AirRec test notification failed: \(error.localizedDescription)")
+            if defaults.string(forKey: Self.statusReminderKey) == token {
+                defaults.removeObject(forKey: Self.statusReminderKey)
+            }
+            airRecordLog("AirRec monitoring reminder failed: \(error.localizedDescription)")
         }
+    }
+
+    func resetStatusReminder() {
+        guard defaults.string(forKey: Self.statusReminderKey) != nil else { return }
+        defaults.removeObject(forKey: Self.statusReminderKey)
+        center.removePendingNotificationRequests(withIdentifiers: [Self.statusNotificationID])
     }
 
     func arm() {

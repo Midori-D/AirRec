@@ -1,6 +1,6 @@
-// AirRecord signing; keep the existing bundle id for update compatibility.
+// AirRec signing settings.
 DEVELOPMENT_TEAM =
-AIRRECORD_BUNDLE_IDENTIFIER = com.calltap.prototype.ictrl
+AIRRECORD_BUNDLE_IDENTIFIER = com.midori.airrec
 
 // Optional developer-only overrides; not committed.
 #include? "Local.xcconfig"
