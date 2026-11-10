@@ -1,5 +1,5 @@
 import SwiftUI
-import UniformTypeIdentifiers
+import UIKit
 
 /// The on-device DDI mounting flow.
 ///
@@ -80,21 +80,25 @@ struct DDIMountView: View {
             .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
                 if !tunnelUp { refreshVPNState() }
             }
-            .fileImporter(isPresented: $showPairingPicker,
-                          allowedContentTypes: PairingFileStore.supportedContentTypes) { result in
-                switch result {
-                case .success(let url):
-                    do {
-                        try PairingFileStore.importFile(from: url)
-                        hasPairingFile = true
-                        pairingError = nil
-                    } catch {
-                        pairingError = error.localizedDescription
-                    }
-                case .failure(let error):
-                    pairingError = error.localizedDescription
+            .sheet(isPresented: $showPairingPicker) {
+                PairingCopyPicker { url in
+                    if let url { importPairingCopy(from: url) }
+                    showPairingPicker = false
                 }
             }
+        }
+    }
+
+    private func importPairingCopy(from url: URL) {
+        airRecordLog("Pairing picker returned a document copy")
+        do {
+            try PairingFileStore.importFile(from: url)
+            hasPairingFile = true
+            pairingError = nil
+        } catch {
+            pairingError = error.localizedDescription
+            let failure = error as NSError
+            airRecordLog("Pairing picker import failed: \(failure.domain) \(failure.code)")
         }
     }
 
@@ -213,6 +217,7 @@ struct DDIMountView: View {
                         : L10n.t(.pairingHint))
 
             actionButton(hasPairingFile ? L10n.t(.replacePairingFile) : L10n.t(.choosePairingFile)) {
+                airRecordLog("Pairing document picker requested")
                 showPairingPicker = true
             }
 

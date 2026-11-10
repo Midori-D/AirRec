@@ -259,7 +259,7 @@ struct AirRecordGlassView: View {
             ))
             .font(.headline)
             .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
-            Text("앱 전환기에서 AirRec을 닫을 때 iOS가 종료 신호를 주면 바로 알립니다. 신호를 받지 못하면 백그라운드 감시를 약 3분 동안 확인하지 못했을 때 알립니다.")
+            Text("AirRec 비활성화 시 알립니다.")
                 .font(.footnote).foregroundStyle(.secondary)
             if standbyAlert.hasAlertPermission == true && !standby.isLiveContainer {
                 Label("알림 허용됨", systemImage: "checkmark.circle.fill")

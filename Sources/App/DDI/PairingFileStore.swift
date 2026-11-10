@@ -13,31 +13,14 @@ import UniformTypeIdentifiers
 /// `idevicepair pair` or kept by SideStore) cannot open that tunnel.
 enum PairingFileStore {
 
-    /// Types the import picker accepts.
-    ///
-    /// `.fileImporter` matches a picked file's type against this list, and the
-    /// match has to hold for the file's *actual* UTI. A pairing record is an
-    /// XML property list, which iOS types as `public.xml` — a sibling of
-    /// `public.data`, not a subtype, so `.data` alone does not let it through.
-    ///
-    /// Two traps made the old list miss real files:
-    ///  * `UTType(filenameExtension:)` returns nil for `plist` /
-    ///    `mobiledevicepairing` on iOS — no such UTI is registered — so those
-    ///    entries silently vanished and the list collapsed to `.data`.
-    ///  * A picker only enables what the list *contains*; `.xml` has to be
-    ///    listed on its own because it is not covered by `.data`.
-    ///
-    /// So declare every type explicitly with `UTType(tag:tagClass:conformingTo:)`
-    /// (which does not depend on a system-registered UTI) and keep `.data` last
-    /// as the permissive catch-all. The file is validated after the pick anyway,
-    /// so a wider list costs nothing but a clearer failure.
+    /// File providers may report different types for the same pairing record.
+    /// Keep the known types and validate the actual bytes after selection.
     static let supportedContentTypes: [UTType] = {
         var types: [UTType] = []
 
         // The standard property-list type (both XML and binary forms).
         types.append(.propertyList)
-        // A pairing record is usually XML: iOS reports `public.xml`, and the
-        // picker must be told about it explicitly.
+        // Some providers report an XML document instead of a property list.
         types.append(.xml)
 
         // Apple's tooling and the community write these extensions. Build the
@@ -55,9 +38,7 @@ enum PairingFileStore {
             types.append(t)
         }
 
-        // Permissive catch-all: every file conforms to `.data`, so this keeps
-        // the picker from greying out a record saved under an unexpected
-        // extension. Content is validated by `validate(_:)` after import.
+        // Accept generic data as well, for files with an unexpected extension.
         types.append(.data)
 
         return types
