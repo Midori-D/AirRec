@@ -27,7 +27,7 @@ final class AirRecordStandbyAlert: ObservableObject {
 
     @Published private(set) var isEnabled = UserDefaults.standard.bool(forKey: AirRecordStandbyAlert.preferenceKey)
     @Published private(set) var isRequestingPermission = false
-    @Published private(set) var needsPermission = false
+    @Published private(set) var hasAlertPermission: Bool?
     @Published private(set) var canRequestPermission = false
 
     private static let preferenceKey = "AirRecord.standbyAlert.enabled"
@@ -64,7 +64,7 @@ final class AirRecordStandbyAlert: ObservableObject {
     }
 
     private func updatePermission(_ settings: UNNotificationSettings) {
-        needsPermission = settings.alertSetting != .enabled
+        hasAlertPermission = settings.alertSetting == .enabled
         canRequestPermission = settings.authorizationStatus == .notDetermined
     }
 

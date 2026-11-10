@@ -9,7 +9,7 @@ xcodebuild build -project AirRec.xcodeproj -scheme AirRec -configuration Release
   -derivedDataPath build/airrec-ios -destination 'generic/platform=iOS' ARCHS=arm64 \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS='AIRRECORD_AUTOMATION' \
-  MARKETING_VERSION=1.3.6 CURRENT_PROJECT_VERSION=35
+  MARKETING_VERSION=1.3.7 CURRENT_PROJECT_VERSION=36
 APP="$ROOT/build/airrec-ios/Build/Products/Release-iphoneos/AirRec.app"
 [[ -d "$APP" ]] || { echo "App bundle missing" >&2; exit 1; }
 # This target must remain a normal app with no XCTest dependency or test plugin.
@@ -32,4 +32,4 @@ cp -R "$APP" "$PAYLOAD/Payload/"
 rm -f -- "$ROOT/Extras/release/AirRec-unsigned.ipa"
 (cd "$PAYLOAD" && zip -qr "$ROOT/Extras/release/AirRec-unsigned.ipa" Payload)
 python3 Scripts/verify-airrecord-ipa.py Extras/release/AirRec-unsigned.ipa
-echo 'AirRec 1.3.6 build 35 packaged; configurable outgoing recording delay.'
+echo 'AirRec 1.3.7 build 36 packaged; notification permission status and shared incoming Shortcut.'

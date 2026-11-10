@@ -7,7 +7,6 @@ import Foundation
 @MainActor
 final class AirRecordShortcutPresence: ObservableObject {
     static let shared = AirRecordShortcutPresence()
-    static let targetName = "AirRec(발신)"
 
     @Published private(set) var lastActionRunAt: Date?
     @Published private(set) var lastEndActionRunAt: Date?
