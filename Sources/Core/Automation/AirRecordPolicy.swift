@@ -50,6 +50,13 @@ struct AirRecordCallState {
 
 /// Pure state machine, separated from CallKit and XCTest for executable tests.
 struct AirRecordPolicy {
+    static let outgoingDelayRange = 0...10
+    static let defaultOutgoingDelaySeconds = 3
+
+    static func clampedOutgoingDelaySeconds(_ seconds: Int) -> Int {
+        min(max(seconds, outgoingDelayRange.lowerBound), outgoingDelayRange.upperBound)
+    }
+
     enum Decision: Equatable {
         case paused
         case noCall
@@ -82,7 +89,8 @@ struct AirRecordPolicy {
     }
 
     mutating func decision(calls: [AirRecordCallState], enabled: Bool,
-                           now: TimeInterval) -> Decision {
+                           now: TimeInterval,
+                           outgoingDelaySeconds: Int = AirRecordPolicy.defaultOutgoingDelaySeconds) -> Decision {
         let active = calls.filter { !$0.hasEnded }
         let ids = Set(active.map(\.id))
         // Completed/ended sessions must not leave stale state behind. A future
@@ -105,7 +113,8 @@ struct AirRecordPolicy {
 
         // Give the caller time to hang up before More can cover the call controls.
         if call.isOutgoing {
-            let readyAt = outgoingReadyTimes[call.id, default: now + 3]
+            let delay = TimeInterval(Self.clampedOutgoingDelaySeconds(outgoingDelaySeconds))
+            let readyAt = outgoingReadyTimes[call.id, default: now + delay]
             outgoingReadyTimes[call.id] = readyAt
             guard now >= readyAt else { return .settling }
         }

@@ -73,11 +73,12 @@ private final class AirRecordAutomationGate: @unchecked Sendable {
         generation &+= 1
     }
 
-    func decision() -> (AirRecordPolicy.Decision, Inspection?) {
+    func decision(outgoingDelaySeconds: Int) -> (AirRecordPolicy.Decision, Inspection?) {
         lock.lock()
         defer { lock.unlock() }
         let now = ProcessInfo.processInfo.systemUptime
-        let decision = policy.decision(calls: calls, enabled: enabled, now: now)
+        let decision = policy.decision(calls: calls, enabled: enabled, now: now,
+                                       outgoingDelaySeconds: outgoingDelaySeconds)
         guard case .inspect(let id) = decision else { return (decision, nil) }
         if deadlines[id] == nil { deadlines[id] = now + 20 }
         return (decision, Inspection(generation: generation, callID: id,
@@ -142,6 +143,7 @@ private final class AirRecordAutomationGate: @unchecked Sendable {
 final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate {
     static let shared = AirRecordMonitor()
     @Published private(set) var isEnabled: Bool
+    @Published private(set) var outgoingDelaySeconds: Int
     @Published private(set) var isRunning = false
     @Published private(set) var isPreparing = false
     @Published private(set) var activationError: String? = nil
@@ -188,10 +190,15 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     private var recordingWaitPreparationResult: Bool?
     private let defaults: UserDefaults
     private static let enabledKey = "CallTap.RawAX.autoStartEnabled"
+    private static let outgoingDelayKey = "AirRecord.outgoingDelaySeconds"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         isEnabled = defaults.bool(forKey: Self.enabledKey)
+        let savedDelay = defaults.object(forKey: Self.outgoingDelayKey) as? Int
+        outgoingDelaySeconds = AirRecordPolicy.clampedOutgoingDelaySeconds(
+            savedDelay ?? AirRecordPolicy.defaultOutgoingDelaySeconds
+        )
         super.init()
         standby.onStopped = { [weak self] message in
             guard let self, self.isRunning || self.isPreparing else { return }
@@ -206,6 +213,13 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         }
         standby.onEvent = { [weak self] message in self?.recordEvent(message) }
         if isEnabled { status = "AirRec 연결 확인 후 재개" }
+    }
+
+    func setOutgoingDelaySeconds(_ seconds: Int) {
+        let delay = AirRecordPolicy.clampedOutgoingDelaySeconds(seconds)
+        guard outgoingDelaySeconds != delay else { return }
+        outgoingDelaySeconds = delay
+        defaults.set(delay, forKey: Self.outgoingDelayKey)
     }
 
     func start() async {
@@ -651,7 +665,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         }
         updateCalls()
         guard !workerIsRunning else { return }
-        let (decision, inspection) = gate.decision()
+        let (decision, inspection) = gate.decision(outgoingDelaySeconds: outgoingDelaySeconds)
         switch decision {
         case .settling, .inspect: setInspectionPolling(true)
         default: setInspectionPolling(false)

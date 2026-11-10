@@ -358,6 +358,16 @@ struct AirRecordGlassView: View {
         AirRecordCard {
             AirRecordHeading("AirRec 자동화", systemImage: "square.stack.3d.up", tint: accent)
             Divider()
+            Stepper(value: Binding(
+                get: { monitor.outgoingDelaySeconds },
+                set: { monitor.setOutgoingDelaySeconds($0) }
+            ), in: AirRecordPolicy.outgoingDelayRange) {
+                Text("발신 녹음 대기 \(monitor.outgoingDelaySeconds)초")
+                    .font(.subheadline.weight(.semibold))
+            }
+            Text("새로 연결되는 발신 통화에 적용됩니다. 0초로 설정하면 추가 대기 없이 녹음을 준비합니다.")
+                .font(.footnote).foregroundStyle(.secondary)
+            Divider()
             Link(destination: URL(string: "https://www.icloud.com/shortcuts/b888fa97da424299aa6cc67cbc4c7402")!) {
                 Label("AirRec(발신) 단축어 추가", systemImage: "plus.circle")
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -396,7 +406,7 @@ struct AirRecordGlassView: View {
                     AirRecordInfoRow("2. Wi-Fi 확인하기", value: "Wi-Fi 네트워크 이름이 있으면 셀룰러 설정을 그대로 두세요. 이름이 비어 있을 때만 AirRec의 ‘발신’ 동작을 실행하세요.")
                     AirRecordInfoRow("3. 발신을 감지하면 데이터 끄기", value: "‘발신’의 최대 대기 시간에 1~180초를 입력할 수 있습니다. 기본값은 20초이며, 25초를 넘기면 대기 중 iOS 진행 표시가 나타날 수 있습니다. 결과가 ‘예’일 때만 ‘셀룰러 데이터 끄기 → 발신종료 → 셀룰러 데이터 켜기’를 실행하세요.")
                     AirRecordInfoRow("4. 통화가 끝나면 데이터 복구하기", value: "‘발신종료’는 활성 통화가 모두 끝날 때까지 기다립니다. 기본 60분, 최대 180분이며 대기 중 진행 표시가 나타납니다. 시간 초과에도 데이터를 복구하도록 ‘켜기’는 종료 결과와 관계없이 실행하세요. 단축어가 중단됐다면 데이터를 직접 켜 주세요.")
-                    AirRecordInfoRow("발신 녹음은 언제 시작하나요?", value: "발신 통화가 연결된 뒤 3초 동안은 ‘더 보기’를 열지 않습니다. 음성사서함도 연결로 잡힐 수 있습니다. 녹음을 원하지 않으면 그 3초 안에 전화를 끊어 주세요.")
+                    AirRecordInfoRow("발신 녹음은 언제 시작하나요?", value: "발신 통화가 연결되면 설정한 시간만큼 기다린 뒤 ‘더 보기’를 엽니다. 음성사서함도 통화 연결로 인식될 수 있으니, 녹음을 원하지 않으면 대기 중에 전화를 끊어 주세요.")
                     AirRecordInfoRow("수신 시험하기", value: "단축어 앱에서 AirRec의 ‘수신’ 동작을 실행한 뒤 다른 전화기로 걸어 보세요. 기본 20초 동안 응답 전의 수신 통화를 감지하면 ‘예’를 반환합니다. 자동으로 단축어를 시작할 수신 트리거는 아직 없습니다.")
                     AirRecordInfoRow("기존 단축어 연결", value: "새 번들 ID로 설치한 후 기존 동작이 실행되지 않으면 단축어에서 AirRec의 ‘발신’과 ‘발신종료’를 다시 선택하세요.")
                     AirRecordInfoRow("첫 통화 확인", value: "발신 감지는 단축어에서 따로 시험할 수 있습니다. 실제 녹음은 전화 화면의 타이머와 메모 앱에서 확인하세요. 전화 앱을 닫아도 통화는 이어질 수 있으므로 앱이 닫힐 때 VPN을 끄도록 설정하면 녹음 준비가 끊길 수 있습니다.")

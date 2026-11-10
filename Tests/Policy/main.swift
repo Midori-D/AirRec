@@ -62,6 +62,28 @@ do {
 
 do {
     var policy = AirRecordPolicy()
+    let outgoing = call(outgoing: true)
+    check(policy.decision(calls: [call(connected: false, outgoing: true)], enabled: true,
+                          now: 0, outgoingDelaySeconds: 0) == .connecting,
+          "zero delay still waits for the outgoing connection")
+    check(policy.decision(calls: [outgoing], enabled: true, now: 1, outgoingDelaySeconds: 0)
+          == .inspect(firstID), "zero delay allows inspection as soon as the call connects")
+
+    let next = call(secondID, outgoing: true)
+    check(policy.decision(calls: [next], enabled: true, now: 2, outgoingDelaySeconds: 7) == .settling,
+          "a newly connected call uses the selected delay")
+    check(policy.decision(calls: [next], enabled: true, now: 8.9, outgoingDelaySeconds: 0) == .settling,
+          "changing the setting does not shorten a call's existing wait")
+    check(policy.decision(calls: [next], enabled: true, now: 9, outgoingDelaySeconds: 0)
+          == .inspect(secondID), "the selected seven-second delay expires at the expected time")
+    check(policy.decision(calls: [call()], enabled: true, now: 10, outgoingDelaySeconds: 10)
+          == .inspect(firstID), "outgoing delay does not delay connected incoming calls")
+    check(AirRecordPolicy.clampedOutgoingDelaySeconds(-1) == 0, "negative delays clamp to zero")
+    check(AirRecordPolicy.clampedOutgoingDelaySeconds(11) == 10, "delay cannot exceed ten seconds")
+}
+
+do {
+    var policy = AirRecordPolicy()
     check(policy.decision(calls: [call(held: true)], enabled: true, now: 0) == .held,
           "held call")
     check(policy.decision(calls: [call(), call(secondID, connected: false)], enabled: true, now: 0)
