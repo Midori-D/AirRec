@@ -64,9 +64,11 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     @Published private(set) var lowPowerModeEnabled = false
     @Published private(set) var indicatorMinimizationEnabled: Bool
     @Published private(set) var authorizationText = "위치 권한 확인 중"
+    @Published private(set) var isPreciseLocationEnabled: Bool?
     @Published private(set) var indicatorStatusText = "기본 위치 표시 모드"
 
     var hasAlwaysAuthorization: Bool { indicatorPolicy.authorization == .always }
+    var hasWhenInUseAuthorization: Bool { indicatorPolicy.authorization == .whenInUse }
 
     var onStopped: ((String) -> Void)?
     var onEvent: ((String) -> Void)?
@@ -471,7 +473,8 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
     private func refreshAuthorizationPresentation() {
         // Query a retained manager now rather than trusting an authorization
         // value captured in a queued callback from an earlier session.
-        let current = (manager ?? permissionManager).authorizationStatus
+        let locationManager = manager ?? permissionManager
+        let current = locationManager.authorizationStatus
         if current != .notDetermined { permissionWhenInUseRequestSent = false }
         let authorization: AirRecordLocationIndicatorPolicy.Authorization
         let label: String
@@ -485,6 +488,19 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         }
         if current == .authorizedAlways { authorizationHint = nil }
         indicatorPolicy.updateAuthorization(authorization)
+        let preciseLocationEnabled: Bool?
+        if authorization == .whenInUse || authorization == .always {
+            switch locationManager.accuracyAuthorization {
+            case .fullAccuracy: preciseLocationEnabled = true
+            case .reducedAccuracy: preciseLocationEnabled = false
+            @unknown default: preciseLocationEnabled = nil
+            }
+        } else {
+            preciseLocationEnabled = nil
+        }
+        if isPreciseLocationEnabled != preciseLocationEnabled {
+            isPreciseLocationEnabled = preciseLocationEnabled
+        }
         let showsIndicator = indicatorPolicy.showsBackgroundLocationIndicator
         manager?.showsBackgroundLocationIndicator = showsIndicator
         authorizationText = label + (authorizationHint.map { " · " + $0 } ?? "")

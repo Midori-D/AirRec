@@ -1,13 +1,11 @@
 // AirRecord, 2026. SPDX-License-Identifier: Apache-2.0
-#if AIRRECORD_AUTOMATION
+#if AIRRECORD_AUTOMATION // AIRRECORD_AUTOMATION 조건이 있을 경우 아래 코드를 빌드에 포함함
 import SwiftUI
 
 private enum AirRecordTab: Hashable {
     case home, settings, activity, contact
 }
 
-/// Navigation stays separate from monitoring: switching tabs never changes a
-/// location session, a pending recording reservation, or the saved preference.
 @MainActor
 struct AirRecordGlassView: View {
     @StateObject private var monitor = AirRecordMonitor.shared
@@ -21,6 +19,7 @@ struct AirRecordGlassView: View {
     @State private var showMount = false
     @State private var shortcutOpeningError: String?
 
+    // 앱 대표 색상
     private var accent: Color {
         colorScheme == .dark ? Color(red: 1, green: 0.52, blue: 0.65)
             : Color(red: 0.76, green: 0.20, blue: 0.36)
@@ -53,8 +52,7 @@ struct AirRecordGlassView: View {
             }
         }
         .tint(accent)
-        // The system draws the floating Liquid Glass tab bar, including its
-        // accessibility, contrast, and Reduce Transparency adaptations.
+        // Liquid Glass
         .tabBarMinimizeBehavior(.onScrollDown)
         .sheet(isPresented: $showMount) { DDIMountView() }
         .task { await monitor.resumeIfEnabled() }
@@ -90,6 +88,7 @@ struct AirRecordGlassView: View {
                 }
             monitoringCard
             standbySummary
+            // 추후 구현...
             AirRecordShortcutStatusView(accent: accent)
             AirRecordShortcutStatusView(accent: accent, kind: .end)
             AirRecordPlannedFeatureView(title: "AirRec 수신 자동화", systemImage: "phone.arrow.down.left", accent: accent)
@@ -206,10 +205,10 @@ struct AirRecordGlassView: View {
         AirRecordCard {
             AirRecordHeading("AirRec 초기 설정", systemImage: "checklist", tint: accent)
             Divider()
-            Text("LocalDevVPN 연결과 개발자 디스크 준비를 마친 뒤 AirRec을 활성화하세요.")
+            Text("처음 설치했다면 페어링 파일과 개발자 디스크(DDI)를 준비하고 LocalDevVPN을 연결한 뒤 AirRec을 활성화하세요.")
                 .font(.subheadline).foregroundStyle(.secondary)
             Button { showMount = true } label: {
-                Label("페어링 파일 · 개발자 디스크", systemImage: "externaldrive")
+                Label("DDI 연결", systemImage: "externaldrive")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.bordered).controlSize(.large)
@@ -217,12 +216,13 @@ struct AirRecordGlassView: View {
             DisclosureGroup("AirRec 초기 설정이란?") {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("AirRec이 이 아이폰의 개발자 서비스에 연결할 수 있도록 페어링 파일과 개발자 디스크를 준비하는 과정입니다.")
-                    AirRecordInfoRow("1. 페어링 파일 가져오기", value: "iLoader 또는 idevice_pair 등으로 준비한 RemotePairing 파일을 선택하세요. Windows PC에서 만든 파일도 사용할 수 있습니다. 개인 페어링 파일은 다른 사람에게 공유하지 마세요.")
-                    AirRecordInfoRow("2. 개발자 디스크 다운로드", value: "셀룰러 데이터를 끄거나 VPN을 연결하기 전에 디스크 파일을 다운로드하세요. 다운로드한 파일은 다음 연결에도 다시 사용합니다.")
-                    AirRecordInfoRow("3. LocalDevVPN 연결", value: "LocalDevVPN을 연결하고 이 화면의 연결 확인 결과를 확인하세요. Wi-Fi가 없을 때는 셀룰러 데이터를 잠시 끈 연결을 시험할 수 있습니다. 직접 데이터를 껐다면 준비를 마친 뒤 다시 켜 주세요.")
-                    AirRecordInfoRow("4. 개발자 디스크 연결", value: "‘개발자 디스크 연결’을 누르고 성공할 때까지 기다리세요. 처음 연결할 때는 인터넷이 필요할 수 있습니다. 준비가 끝나면 홈에서 AirRec을 활성화하세요.")
-                    AirRecordInfoRow("다시 준비해야 할 때", value: "아이폰을 재부팅하면 개발자 디스크를 다시 연결해야 합니다. 연결 오류가 나면 LocalDevVPN과 페어링 파일 상태를 확인하세요. 실행 중에도 LocalDevVPN 연결이 필요합니다.")
-                    AirRecordInfoRow("첫 통화 확인", value: "아이폰의 잠금을 해제한 상태에서 먼저 시험하고, 실제 녹음 타이머와 메모 앱의 저장 결과를 확인하세요.")
+                    AirRecordInfoRow("1. 페어링 파일 가져오기", value: "iLoader 또는 idevice_pair 등으로 준비한 RemotePairing 파일을 선택하세요. 개인 페어링 파일은 다른 사람에게 공유하지 마세요.")
+                    AirRecordInfoRow("2. 개발자 디스크 다운로드", value: "다운로드한 파일은 다음 연결에도 다시 사용합니다. 다운로드 시간은 네트워크 상태에 따라 달라집니다.")
+                    AirRecordInfoRow("3. LocalDevVPN 연결", value: "LocalDevVPN을 연결해 주세요.")
+                    AirRecordInfoRow("4. 개발자 디스크 연결", value: "‘개발자 디스크 연결’을 누르고 연결 성공을 확인한 뒤 홈에서 AirRec을 활성화하세요.")
+                    AirRecordInfoRow("DDI 파일은 어디에 저장되나요?", value: "다운로드한 파일은 AirRec 앱 데이터에 저장됩니다. AirRec을 삭제하면 다운로드한 파일도 지워집니다.")
+                    AirRecordInfoRow("앱을 재설치하고 DDI를 내려받으면 용량이 늘어나나요?", value: "재설치 때마다 앱에 파일이 쌓이지는 않습니다.")
+                    AirRecordInfoRow("iOS 업데이트 후 용량이 늘 수 있나요?", value: "iOS 26.3 이하에서 26.4 이상으로 업데이트한 뒤 새 개발자 디스크를 내려받으면, 이전 파일도 앱에 남아 용량이 늘 수 있습니다.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
@@ -240,12 +240,13 @@ struct AirRecordGlassView: View {
             ))
             .font(.headline)
             .disabled(monitor.isPreparing || (standby.isLiveContainer && !standby.isEnabled))
-            Text("화면을 끄거나 다른 앱을 쓰는 동안에도 통화 연결을 감시합니다. 위치 권한이 필요하며, AirRec은 위치 업데이트 시각만 확인합니다.")
+            Text("화면을 끄거나 다른 앱을 쓰는 동안에도 통화 연결을 감시합니다. 위치 권한이 필요하며, AirRec은 위치 업데이트 시각만 확인합니다. 위치 권한은 ‘앱을 사용하는 동안 허용’을 권장합니다. ‘정확한 위치’는 꺼도 됩니다.")
                 .font(.footnote).foregroundStyle(.secondary)
             if standby.isLiveContainer {
                 Label("백그라운드 기능은 SideStore에 독립 설치한 앱에서 사용하세요.", systemImage: "info.circle")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+            locationPermissionStatuses
             if standby.isEnabled {
                 Divider()
                 Toggle("다이내믹 아일랜드 위치 표시 숨기기", isOn: Binding(
@@ -265,7 +266,7 @@ struct AirRecordGlassView: View {
             ))
             .font(.headline)
             .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
-            Text("백그라운드 감시가 끊기면 마지막 확인에서 약 3분 뒤에 알립니다.")
+            Text("종료 신호를 받으면 바로 알립니다. 백그라운드 감시를 약 3분 동안 확인하지 못하면 상태 확인 알림을 보냅니다.")
                 .font(.footnote).foregroundStyle(.secondary)
             if standbyAlert.canRequestPermission {
                 Button("알림 허용", systemImage: "bell.badge") {
@@ -274,13 +275,8 @@ struct AirRecordGlassView: View {
                 .font(.subheadline.weight(.semibold))
                 .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
             } else if standbyAlert.needsPermission {
-                Text("iOS 설정에서 알림과 배너를 허용해 주세요.")
+                Text("아래의 ‘AirRec 설정 열기’를 탭해 알림과 배너를 허용해 주세요.")
                     .font(.footnote).foregroundStyle(.secondary)
-                Button("알림 설정 열기", systemImage: "arrow.up.forward.app") {
-                    guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else { return }
-                    UIApplication.shared.open(url)
-                }
-                .font(.subheadline.weight(.semibold))
             }
             Divider()
             Button { openAppSettings() } label: {
@@ -292,12 +288,34 @@ struct AirRecordGlassView: View {
         }
     }
 
+    private var locationPermissionStatuses: some View {
+        let canReadPermissions = !standby.isLiveContainer
+        return VStack(alignment: .leading, spacing: 8) {
+            locationPermissionRow("앱을 사용하는 동안", isOn: canReadPermissions ? standby.hasWhenInUseAuthorization : nil,
+                                  onText: "허용 확인됨", offText: "선택 안 됨")
+            locationPermissionRow("정확한 위치", isOn: canReadPermissions ? standby.isPreciseLocationEnabled : nil,
+                                  onText: "켜짐", offText: "꺼짐")
+            locationPermissionRow("항상 허용", isOn: canReadPermissions ? standby.hasAlwaysAuthorization : nil,
+                                  onText: "확인됨", offText: "선택 안 됨")
+        }
+    }
+
+    private func locationPermissionRow(_ title: String, isOn: Bool?, onText: String, offText: String) -> some View {
+        let state: String
+        switch isOn {
+        case .some(true): state = onText
+        case .some(false): state = offText
+        case .none: state = "확인 불가"
+        }
+        let confirmed = isOn == true
+        return Label("\(title) \(state)", systemImage: confirmed ? "checkmark.circle.fill" : "xmark.circle.fill")
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(confirmed ? Color.green : Color.red)
+    }
+
     @ViewBuilder
     private var indicatorPermissionControls: some View {
-        if standby.hasAlwaysAuthorization {
-            Label("항상 허용 확인됨", systemImage: "checkmark.circle.fill")
-                .font(.footnote.weight(.medium)).foregroundStyle(.green)
-        } else {
+        if !standby.hasAlwaysAuthorization {
             Text("위치 표시를 숨기려면 위치 권한을 ‘항상 허용’으로 설정해야 합니다.")
                 .font(.footnote).foregroundStyle(.secondary)
             Button { standby.requestAlwaysAuthorization() } label: {
@@ -322,7 +340,7 @@ struct AirRecordGlassView: View {
                 AirRecordInfoRow("현재 대기 상태", value: standby.status)
                 AirRecordInfoRow("현재 위치 권한", value: standby.authorizationText)
                 Text(standby.indicatorStatusText)
-                if !standby.isEnabled {
+                if !standby.isEnabled && !standby.hasAlwaysAuthorization {
                     Text("백그라운드 기능을 켜기 전에 위치 권한을 준비할 수 있습니다.")
                     indicatorPermissionControls
                 }
@@ -352,6 +370,17 @@ struct AirRecordGlassView: View {
             if let shortcutOpeningError {
                 Text(shortcutOpeningError).font(.footnote).foregroundStyle(.orange)
             }
+            Divider()
+            Button {} label: {
+                HStack(spacing: 10) {
+                    Label("AirRec(수신) 단축어 추가", systemImage: "plus.circle")
+                    Spacer(minLength: 8)
+                    Text("준비 중").font(.caption)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered).controlSize(.large)
+            .disabled(true)
             Divider()
             Button("실시간 현황 설정 열기", systemImage: "livephoto") { openAppSettings() }
                 .font(.subheadline.weight(.semibold))
