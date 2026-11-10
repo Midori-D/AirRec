@@ -5,6 +5,7 @@ import UIKit
 
 @main
 struct AirRecordApp: App {
+    @UIApplicationDelegateAdaptor(AirRecordNotificationDelegate.self) private var notificationDelegate
     @StateObject private var permission = NetworkPermission()
     @State private var showPermissionAlert = false
     @State private var sharedPairing: SharedPairingResult?

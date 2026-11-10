@@ -18,7 +18,7 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.midori.airrec':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.3.1' or str(info.get('CFBundleVersion')) != '30':
+        if info.get('CFBundleShortVersionString') != '1.3.2' or str(info.get('CFBundleVersion')) != '31':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRec' or info.get('CFBundleName') != 'AirRec':
             raise ValueError('Unexpected app display name.')
@@ -62,7 +62,7 @@ def verify(path):
             raise ValueError('Status action must return Bool in the main app in background mode.')
         if status.get('systemProtocols') or status.get('parameters') or status.get('openAppWhenRun'):
             raise ValueError('Status action must be a short background action without parameters.')
-        if status['title']['key'] != 'AirRec 상태 확인':
+        if status['title']['key'] != '상태 확인':
             raise ValueError('Unexpected status action title.')
         shortcuts = archive.read(prefix+'Metadata.appintents/root.ssu.yaml')
         if b'bundleIdentifier: com.midori.airrec' not in shortcuts or b'CheckAirRecordStatusIntent' not in shortcuts:
@@ -101,7 +101,7 @@ def verify(path):
             count += 1
         if count < 1 or prefix+info['CFBundleExecutable'] not in names:
             raise ValueError('Main executable missing.')
-        print(f'PASS: AirRec 1.3.1 (30), location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
+        print(f'PASS: AirRec 1.3.2 (31), location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])

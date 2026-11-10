@@ -265,9 +265,15 @@ struct AirRecordGlassView: View {
             ))
             .font(.headline)
             .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
-            Text("백그라운드 감시가 끊기면 마지막 확인에서 약 3분 뒤에 알립니다. 단축어의 ‘AirRec 상태 확인’으로 감시 중지를 발견했을 때도 알립니다.")
+            Text("백그라운드 감시가 끊기면 마지막 확인에서 약 3분 뒤에 알립니다.")
                 .font(.footnote).foregroundStyle(.secondary)
-            if standbyAlert.needsPermission {
+            if standbyAlert.canRequestPermission {
+                Button("알림 허용", systemImage: "bell.badge") {
+                    Task { _ = await standbyAlert.requestPermission() }
+                }
+                .font(.subheadline.weight(.semibold))
+                .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
+            } else if standbyAlert.needsPermission {
                 Text("iOS 설정에서 알림과 배너를 허용해 주세요.")
                     .font(.footnote).foregroundStyle(.secondary)
                 Button("알림 설정 열기", systemImage: "arrow.up.forward.app") {
@@ -358,7 +364,7 @@ struct AirRecordGlassView: View {
                         Text("AirRec을 SideStore에 독립 설치한 뒤 단축어 동작을 사용하세요.")
                     }
                     AirRecordInfoRow("1. 준비하기", value: "AirRec 초기 설정을 마치고 백그라운드 AirRec과 홈의 AirRec을 활성화하세요. 단축어를 추가한 뒤, 단축어 앱의 자동화에서 ‘전화 앱이 열릴 때’ LocalDevVPN을 연결하고 ‘AirRec(발신)’을 실행하도록 설정하세요.")
-                    AirRecordInfoRow("감시 상태 확인", value: "LocalDevVPN 연결 다음, Wi-Fi 조건문 앞에 ‘AirRec 상태 확인’을 추가하세요. 결과가 ‘아니요’면 이 단축어를 중단하세요. ‘AirRec 종료 알림’을 켰다면 앱을 다시 열라는 알림이 한 번 표시됩니다.")
+                    AirRecordInfoRow("감시 상태 확인", value: "LocalDevVPN 연결 다음, Wi-Fi 조건문 앞에 ‘상태 확인’을 추가하세요. 결과가 ‘아니요’면 이 단축어를 중단하세요. iOS 알림을 허용하면 AirRec이 앱을 다시 열라는 알림을 즉시 요청합니다.")
                     AirRecordInfoRow("2. Wi-Fi 확인하기", value: "Wi-Fi 네트워크 이름이 있으면 셀룰러 설정을 그대로 두세요. 이름이 비어 있을 때만 AirRec의 ‘발신’ 동작을 실행하세요.")
                     AirRecordInfoRow("3. 발신을 감지하면 데이터 끄기", value: "‘발신’의 최대 대기 시간에 1~180초를 입력할 수 있습니다. 기본값은 20초이며, 25초를 넘기면 대기 중 iOS 진행 표시가 나타날 수 있습니다. 결과가 ‘예’일 때만 ‘셀룰러 데이터 끄기 → 발신종료 → 셀룰러 데이터 켜기’를 실행하세요.")
                     AirRecordInfoRow("4. 통화가 끝나면 데이터 복구하기", value: "‘발신종료’는 활성 통화가 모두 끝날 때까지 기다립니다. 기본 60분, 최대 180분이며 대기 중 진행 표시가 나타납니다. 시간 초과에도 데이터를 복구하도록 ‘켜기’는 종료 결과와 관계없이 실행하세요. 단축어가 중단됐다면 데이터를 직접 켜 주세요.")

@@ -533,7 +533,6 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         isPreparing = false
         isRunning = true
         activationError = nil
-        standbyAlert.resetStatusReminder()
         startStandbyChecks()
         if UIApplication.shared.applicationState == .background { appDidEnterBackground() }
         setStatus(waitingStatus)
