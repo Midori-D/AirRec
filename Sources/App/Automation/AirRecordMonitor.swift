@@ -215,6 +215,10 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         if isEnabled { status = "AirRec 연결 확인 후 재개" }
     }
 
+    func clearRecentEvents() {
+        recentEvents.removeAll()
+    }
+
     func setOutgoingDelaySeconds(_ seconds: Int) {
         let delay = AirRecordPolicy.clampedOutgoingDelaySeconds(seconds)
         guard outgoingDelaySeconds != delay else { return }

@@ -90,7 +90,7 @@ struct AirRecordGlassView: View {
             // 추후 구현...
             AirRecordShortcutStatusView(accent: accent)
             AirRecordShortcutStatusView(accent: accent, kind: .end)
-            AirRecordPlannedFeatureView(title: "AirRec 수신 자동화", systemImage: "phone.arrow.down.left", accent: accent)
+            AirRecordShortcutStatusView(accent: accent, kind: .incoming)
             AirRecordPlannedFeatureView(title: "AirRec 수신종료 자동화", systemImage: "phone.down.fill", accent: accent)
             AirRecordPlannedFeatureView(title: "AirRec 메모 이름 수정", systemImage: "note.text", accent: accent)
             AirRecordPlannedFeatureView(title: "AirBeep (통화 녹음 고지 제거)", systemImage: "speaker.slash", accent: accent)
@@ -216,10 +216,6 @@ struct AirRecordGlassView: View {
             DisclosureGroup("AirRec 초기 설정이란?") {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("AirRec이 이 아이폰의 개발자 서비스에 연결할 수 있도록 페어링 파일과 개발자 디스크를 준비하는 과정입니다.")
-                    AirRecordInfoRow("1. 페어링 파일 가져오기", value: "iLoader 또는 idevice_pair 등으로 준비한 RemotePairing 파일을 선택하세요. 개인 페어링 파일은 다른 사람에게 공유하지 마세요.")
-                    AirRecordInfoRow("2. 개발자 디스크 다운로드", value: "다운로드한 파일은 다음 연결에도 다시 사용합니다. 다운로드 시간은 네트워크 상태에 따라 달라집니다.")
-                    AirRecordInfoRow("3. LocalDevVPN 연결", value: "LocalDevVPN을 연결해 주세요.")
-                    AirRecordInfoRow("4. 개발자 디스크 연결", value: "‘개발자 디스크 연결’을 누르고 연결 성공을 확인한 뒤 홈에서 AirRec을 활성화하세요.")
                     AirRecordInfoRow("Q. DDI 파일은 어디에 저장되나요?", value: "다운로드한 파일은 AirRec 앱 데이터에 저장됩니다. AirRec을 삭제하면 다운로드한 파일도 지워집니다.")
                     AirRecordInfoRow("Q. 앱을 재설치하고 DDI를 내려받으면 용량이 늘어나나요?", value: "재설치 때마다 앱에 파일이 쌓이지는 않습니다.")
                     AirRecordInfoRow("Q. iOS 업데이트 후 용량이 늘 수 있나요?", value: "iOS 26.3 이하에서 26.4 이상으로 업데이트한 뒤 새 개발자 디스크를 내려받으면, 이전 파일도 앱에 남아 용량이 늘 수 있습니다.")
@@ -240,7 +236,7 @@ struct AirRecordGlassView: View {
             ))
             .font(.headline)
             .disabled(monitor.isPreparing || (standby.isLiveContainer && !standby.isEnabled))
-            Text("화면을 끄거나 다른 앱을 쓰는 동안에도 통화 연결을 감시합니다. 위치 권한이 필요하며, AirRec은 위치 업데이트 시각만 확인합니다. 위치 권한은 ‘앱을 사용하는 동안 허용’을 권장합니다. ‘정확한 위치’는 꺼도 됩니다.")
+            Text("백그라운드에서도 통화 연결 상태를 계속 확인합니다.\n위치 권한은 ‘앱을 사용하는 동안만 허용’으로 설정하세요. ‘정확한 위치’는 꺼도 됩니다.")
                 .font(.footnote).foregroundStyle(.secondary)
             if standby.isLiveContainer {
                 Label("백그라운드 기능은 SideStore에 독립 설치한 앱에서 사용하세요.", systemImage: "info.circle")
@@ -271,12 +267,6 @@ struct AirRecordGlassView: View {
             if standbyAlert.hasAlertPermission == true && !standby.isLiveContainer {
                 Label("알림 허용됨", systemImage: "checkmark.circle.fill")
                     .font(.footnote.weight(.medium)).foregroundStyle(.green)
-            } else if standbyAlert.canRequestPermission {
-                Button("알림 허용", systemImage: "bell.badge") {
-                    Task { _ = await standbyAlert.requestPermission() }
-                }
-                .font(.subheadline.weight(.semibold))
-                .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
             } else if standbyAlert.hasAlertPermission == false {
                 Text("아래의 ‘AirRec 설정 열기’를 탭해 알림과 배너를 허용해 주세요.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -341,10 +331,10 @@ struct AirRecordGlassView: View {
     private var backgroundDetails: some View {
         DisclosureGroup("백그라운드 AirRec이란?") {
             VStack(alignment: .leading, spacing: 12) {
-                AirRecordInfoRow("어떤 기능인가요?", value: "다른 앱을 사용하거나 화면이 꺼진 동안에도 통화 상태를 확인할 수 있도록 AirRec의 대기를 유지합니다.")
-                AirRecordInfoRow("위치 권한은 왜 필요한가요?", value: "iOS의 백그라운드 위치 기능을 이용합니다. 위치 업데이트는 받지만 좌표는 읽거나 저장·전송하지 않고, 업데이트 시각만 확인합니다.")
-                AirRecordInfoRow("‘항상 허용’도 필요한가요?", value: "기본 대기에는 정밀 위치나 ‘항상 허용’이 필요하지 않습니다. ‘다이내믹 아일랜드 위치 표시 숨기기’를 사용하려면 ‘항상 허용’이 필요합니다. 표시 여부는 iOS가 관리하므로 모든 위치·개인정보 표시가 사라지는 것은 아닙니다.")
-                AirRecordInfoRow("사용할 때 알아두세요", value: "위치 사용 표시와 배터리 소모가 생길 수 있습니다. iOS가 실행을 중단할 수 있으며, 앱을 강제 종료하거나 기기를 재부팅했다면 다시 열어 활성화하세요. AirRec을 비활성화하면 위치 업데이트도 중지합니다.")
+                AirRecordInfoRow("Q. 어떤 기능인가요?", value: "다른 앱을 사용하거나 화면이 꺼진 동안에도 통화 상태를 확인할 수 있도록 AirRec의 대기를 유지합니다.")
+                AirRecordInfoRow("Q. 위치 권한은 왜 필요한가요?", value: "iOS의 백그라운드 위치 기능을 이용하여 대기 상태를 유지합니다. 위치 업데이트는 받지만 좌표는 읽거나 저장·전송하지 않고, 업데이트 시각만 확인합니다.")
+                AirRecordInfoRow("Q. 배터리가 빨리 소모될 수 있나요?", value: "위치 사용 표시와 배터리 소모가 생길 수 있습니다.")
+                AirRecordInfoRow("Q. 알림은 언제 오나요?", value: "백그라운드 감시 상태를 약 3분 동안 확인하지 못하면 알림을 보냅니다. 단축어의 ‘상태 확인’ 동작을 실행했을 때 통화 감시가 준비되지 않았다면 AirRec을 열어 달라는 알림을 보냅니다.")
             }
             .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
         }
@@ -365,14 +355,16 @@ struct AirRecordGlassView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.bordered).controlSize(.large)
+            shortcutPermissionHint
             Divider()
             Link(destination: URL(string: "https://www.icloud.com/shortcuts/17467870cbcd41c3a06912673661a8a4")!) {
                 Label("AirRec(수신) 단축어 추가", systemImage: "plus.circle")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.bordered).controlSize(.large)
+            shortcutPermissionHint
             Divider()
-            Button("실시간 현황 설정 열기", systemImage: "livephoto") { openAppSettings() }
+            Button("단축어 설정 열기", systemImage: "livephoto") { openAppSettings() }
                 .font(.subheadline.weight(.semibold))
             Text("다이내믹 아일랜드 진행 표시는 iOS의 ‘실시간 현황’ 설정에서 관리합니다. 단축어에서 표시되는 경우 설정의 ‘단축어’ 항목도 확인해 주세요.")
                 .font(.footnote).foregroundStyle(.secondary)
@@ -398,21 +390,57 @@ struct AirRecordGlassView: View {
         }
     }
 
+    private var shortcutPermissionHint: some View {
+        Text("처음 사용하기 전에 단축어 앱에서 단축어를 직접 한 번 실행해 필요한 권한을 허용해 주세요.")
+            .font(.footnote).foregroundStyle(.secondary)
+    }
+
     private var outgoingDelayCard: some View {
         AirRecordCard {
-            AirRecordHeading("발신 녹음 대기 수정", systemImage: "timer", tint: accent)
+            AirRecordHeading("발신 대기 시간 설정", systemImage: "timer", tint: accent)
             Divider()
             Stepper(value: Binding(
                 get: { monitor.outgoingDelaySeconds },
                 set: { monitor.setOutgoingDelaySeconds($0) }
             ), in: AirRecordPolicy.outgoingDelayRange) {
-                Text("\(monitor.outgoingDelaySeconds)초")
+                Text("연결 후 녹음 대기 \(monitor.outgoingDelaySeconds)초")
                     .font(.subheadline.weight(.semibold))
             }
             .accessibilityLabel("발신 녹음 대기 시간")
             .accessibilityValue("\(monitor.outgoingDelaySeconds)초")
             Text("새로 연결되는 발신 통화에 적용됩니다. 0초로 설정하면 추가 대기 없이 녹음을 준비합니다.")
                 .font(.footnote).foregroundStyle(.secondary)
+            if let destination = outgoingShortcutEditorURL {
+                Divider()
+                shortcutWaitLink("발신 단축어 최대 대기 시간", destination: destination)
+                Divider()
+                shortcutWaitLink("발신종료 단축어 최대 대기 시간", destination: destination)
+                Text("두 항목 모두 추가한 ‘AirRec(발신)’ 단축어를 엽니다. ‘발신’의 최대 대기 시간은 초, ‘발신종료’의 최대 대기 시간은 분 단위로 설정하세요.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var outgoingShortcutEditorURL: URL? {
+        var components = URLComponents()
+        components.scheme = "shortcuts"
+        components.host = "open-shortcut"
+        components.queryItems = [URLQueryItem(name: "name", value: "AirRec(발신)")]
+        return components.url
+    }
+
+    private func shortcutWaitLink(_ title: String, destination: URL) -> some View {
+        Link(destination: destination) {
+            HStack(spacing: 12) {
+                Text(title).foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.up.forward.app")
+                    .foregroundStyle(accent)
+                    .accessibilityHidden(true)
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
     }
 
@@ -437,6 +465,11 @@ struct AirRecordGlassView: View {
                         if entry.offset != 0 { Divider() }
                     }
                 }
+                Button("모든 기록 초기화", systemImage: "trash", role: .destructive) {
+                    monitor.clearRecentEvents()
+                }
+                .buttonStyle(.bordered)
+                .disabled(monitor.recentEvents.isEmpty)
             }
             AirRecordCard {
                 DisclosureGroup("상태 정보 자세히 보기") {

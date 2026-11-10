@@ -17,17 +17,16 @@ struct AirRecordApp: App {
     }
 
     init() {
-        // Create the process log before the first screen or network operation.
+        // 로그 저장
         airRecordLog("App launched")
     }
 
     var body: some Scene {
         WindowGroup {
             AirRecordGlassView()
-                // File sharing remains available independently of the setup
-                // sheet. Non-file callbacks are left to their existing views.
+                // .plist 파일 저장
                 .onOpenURL { url in
-                    guard url.isFileURL else { return }
+                    guard url.isFileURL else { return } // 파일 URL이 아닌 경우 무시
                     let name = url.lastPathComponent
                     do {
                         try PairingFileStore.importShared(from: url)
@@ -38,6 +37,7 @@ struct AirRecordApp: App {
                         sharedPairing = SharedPairingResult(fileName: name, error: error.localizedDescription)
                     }
                 }
+                // 결과 알림
                 .alert(item: $sharedPairing) { result in
                     if let error = result.error {
                         return Alert(title: Text(L10n.t(.pairingRejectedTitle)),
@@ -48,7 +48,7 @@ struct AirRecordApp: App {
                                  message: Text(String(format: L10n.t(.pairingReceivedBody), result.fileName)),
                                  dismissButton: .default(Text(L10n.t(.doneButton))))
                 }
-                // Probe the same network permissions as the previous entry.
+                // 로컬 네트워크 권한 확인
                 .task { permission.probe() }
                 .onReceive(permission.$networkData.combineLatest(permission.$localNetwork)) { _ in
                     if !permission.denied.isEmpty { showPermissionAlert = true }

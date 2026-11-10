@@ -187,6 +187,7 @@ struct WaitForAirRecordIncomingCallIntent: AppIntent {
 
     @MainActor
     func perform() async -> some IntentResult & ReturnsValue<Bool> {
+        AirRecordShortcutPresence.shared.recordIncomingActionRun()
         airRecordLog("Incoming wait intent: started")
         let incoming = await AirRecordCallWaiter.wait(target: .incomingRinging, timeout: TimeInterval(waitSeconds))
         let detected = incoming && !Task.isCancelled
