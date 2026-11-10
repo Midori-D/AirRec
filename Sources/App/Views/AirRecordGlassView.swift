@@ -205,10 +205,10 @@ struct AirRecordGlassView: View {
         AirRecordCard {
             AirRecordHeading("AirRec 초기 설정", systemImage: "checklist", tint: accent)
             Divider()
-            Text("처음 설치했다면 페어링 파일과 개발자 디스크(DDI)를 준비하고 LocalDevVPN을 연결한 뒤 AirRec을 활성화하세요.")
+            Text("AirRec 활성화를 위해 개발자 디스크(DDI) 연결이 필요합니다.")
                 .font(.subheadline).foregroundStyle(.secondary)
             Button { showMount = true } label: {
-                Label("DDI 연결", systemImage: "externaldrive")
+                Label("개발자 디스크(DDI) 연결", systemImage: "externaldrive")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.bordered).controlSize(.large)
@@ -220,9 +220,9 @@ struct AirRecordGlassView: View {
                     AirRecordInfoRow("2. 개발자 디스크 다운로드", value: "다운로드한 파일은 다음 연결에도 다시 사용합니다. 다운로드 시간은 네트워크 상태에 따라 달라집니다.")
                     AirRecordInfoRow("3. LocalDevVPN 연결", value: "LocalDevVPN을 연결해 주세요.")
                     AirRecordInfoRow("4. 개발자 디스크 연결", value: "‘개발자 디스크 연결’을 누르고 연결 성공을 확인한 뒤 홈에서 AirRec을 활성화하세요.")
-                    AirRecordInfoRow("DDI 파일은 어디에 저장되나요?", value: "다운로드한 파일은 AirRec 앱 데이터에 저장됩니다. AirRec을 삭제하면 다운로드한 파일도 지워집니다.")
-                    AirRecordInfoRow("앱을 재설치하고 DDI를 내려받으면 용량이 늘어나나요?", value: "재설치 때마다 앱에 파일이 쌓이지는 않습니다.")
-                    AirRecordInfoRow("iOS 업데이트 후 용량이 늘 수 있나요?", value: "iOS 26.3 이하에서 26.4 이상으로 업데이트한 뒤 새 개발자 디스크를 내려받으면, 이전 파일도 앱에 남아 용량이 늘 수 있습니다.")
+                    AirRecordInfoRow("Q. DDI 파일은 어디에 저장되나요?", value: "다운로드한 파일은 AirRec 앱 데이터에 저장됩니다. AirRec을 삭제하면 다운로드한 파일도 지워집니다.")
+                    AirRecordInfoRow("Q. 앱을 재설치하고 DDI를 내려받으면 용량이 늘어나나요?", value: "재설치 때마다 앱에 파일이 쌓이지는 않습니다.")
+                    AirRecordInfoRow("Q. iOS 업데이트 후 용량이 늘 수 있나요?", value: "iOS 26.3 이하에서 26.4 이상으로 업데이트한 뒤 새 개발자 디스크를 내려받으면, 이전 파일도 앱에 남아 용량이 늘 수 있습니다.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
@@ -343,7 +343,6 @@ struct AirRecordGlassView: View {
             VStack(alignment: .leading, spacing: 12) {
                 AirRecordInfoRow("어떤 기능인가요?", value: "다른 앱을 사용하거나 화면이 꺼진 동안에도 통화 상태를 확인할 수 있도록 AirRec의 대기를 유지합니다.")
                 AirRecordInfoRow("위치 권한은 왜 필요한가요?", value: "iOS의 백그라운드 위치 기능을 이용합니다. 위치 업데이트는 받지만 좌표는 읽거나 저장·전송하지 않고, 업데이트 시각만 확인합니다.")
-                AirRecordInfoRow("어떻게 시작하나요?", value: "이 옵션을 켜고 홈에서 AirRec을 활성화하세요. ‘앱을 사용하는 동안 허용’을 선택한 뒤 연결 준비가 끝날 때까지 앱을 열어 두세요.")
                 AirRecordInfoRow("‘항상 허용’도 필요한가요?", value: "기본 대기에는 정밀 위치나 ‘항상 허용’이 필요하지 않습니다. ‘다이내믹 아일랜드 위치 표시 숨기기’를 사용하려면 ‘항상 허용’이 필요합니다. 표시 여부는 iOS가 관리하므로 모든 위치·개인정보 표시가 사라지는 것은 아닙니다.")
                 AirRecordInfoRow("사용할 때 알아두세요", value: "위치 사용 표시와 배터리 소모가 생길 수 있습니다. iOS가 실행을 중단할 수 있으며, 앱을 강제 종료하거나 기기를 재부팅했다면 다시 열어 활성화하세요. AirRec을 비활성화하면 위치 업데이트도 중지합니다.")
             }
