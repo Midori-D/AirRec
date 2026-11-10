@@ -631,7 +631,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
 
     private func currentCalls() -> [AirRecordCallState] {
         observer.calls.map {
-            AirRecordCallState(id: $0.uuid, hasConnected: $0.hasConnected,
+            AirRecordCallState(id: $0.uuid, isOutgoing: $0.isOutgoing, hasConnected: $0.hasConnected,
                              hasEnded: $0.hasEnded, isOnHold: $0.isOnHold)
         }
     }
@@ -652,10 +652,9 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         updateCalls()
         guard !workerIsRunning else { return }
         let (decision, inspection) = gate.decision()
-        if case .inspect = decision {
-            setInspectionPolling(true)
-        } else {
-            setInspectionPolling(false)
+        switch decision {
+        case .settling, .inspect: setInspectionPolling(true)
+        default: setInspectionPolling(false)
         }
         switch decision {
         case .inspect:
@@ -673,6 +672,8 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             setStatus("보류 중인 통화 · 자동 녹음 대기")
         case .connecting:
             setStatus("통화 연결 대기")
+        case .settling:
+            setStatus("발신 연결됨 · 녹음 준비")
         case .noCall:
             setStatus(waitingStatus)
         default: break

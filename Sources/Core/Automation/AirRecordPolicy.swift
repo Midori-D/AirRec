@@ -42,6 +42,7 @@ enum AirRecordCallUI {
 
 struct AirRecordCallState {
     let id: UUID
+    let isOutgoing: Bool
     let hasConnected: Bool
     let hasEnded: Bool
     let isOnHold: Bool
@@ -54,6 +55,7 @@ struct AirRecordPolicy {
         case noCall
         case multipleCalls
         case connecting
+        case settling
         case held
         case handled(UUID)
         case inspect(UUID)
@@ -68,6 +70,7 @@ struct AirRecordPolicy {
     let retryWindow: TimeInterval
     let maximumInspections: Int
     private var windows: [UUID: Window] = [:]
+    private var outgoingReadyTimes: [UUID: TimeInterval] = [:]
     private var isEnabled = false
     private(set) var reservedStarts: Set<UUID> = []
     private(set) var completedCalls: Set<UUID> = []
@@ -85,6 +88,7 @@ struct AirRecordPolicy {
         // Completed/ended sessions must not leave stale state behind. A future
         // genuinely new session may reuse a UUID after it has disappeared.
         windows = windows.filter { ids.contains($0.key) }
+        outgoingReadyTimes = outgoingReadyTimes.filter { ids.contains($0.key) }
         reservedStarts.formIntersection(ids)
         completedCalls.formIntersection(ids)
         menuWindows.formIntersection(ids)
@@ -97,6 +101,13 @@ struct AirRecordPolicy {
         guard !call.isOnHold else { return .held }
         guard !completedCalls.contains(call.id), !reservedStarts.contains(call.id) else {
             return .handled(call.id)
+        }
+
+        // Give the caller time to hang up before More can cover the call controls.
+        if call.isOutgoing {
+            let readyAt = outgoingReadyTimes[call.id, default: now + 3]
+            outgoingReadyTimes[call.id] = readyAt
+            guard now >= readyAt else { return .settling }
         }
 
         var window = windows[call.id] ?? Window(deadline: now + retryWindow)

@@ -509,7 +509,7 @@ final class AirRecordLocationKeepAlive: NSObject, ObservableObject, CLLocationMa
         } else if !showsIndicator {
             indicatorStatusText = manager == nil
                 ? "최소화 설정 저장됨 · 위치 세션 시작 시 표시 끄기를 요청합니다."
-                : "위치 표시 끄기 요청 · 실제 표시와 장시간 유지는 실기기 확인이 필요합니다."
+                : "위치 표시 끄기 요청"
         } else {
             indicatorStatusText = "위치 표시 유지 · 실제 ‘항상 허용’ 권한이 확인되기 전에는 끄지 않습니다."
         }

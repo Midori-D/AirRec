@@ -13,8 +13,8 @@ func check(_ condition: @autoclosure () -> Bool, _ message: String) {
 let firstID = UUID()
 let secondID = UUID()
 func call(_ id: UUID = firstID, connected: Bool = true, ended: Bool = false,
-          held: Bool = false) -> AirRecordCallState {
-    AirRecordCallState(id: id, hasConnected: connected, hasEnded: ended, isOnHold: held)
+          held: Bool = false, outgoing: Bool = false) -> AirRecordCallState {
+    AirRecordCallState(id: id, isOutgoing: outgoing, hasConnected: connected, hasEnded: ended, isOnHold: held)
 }
 
 do {
@@ -35,6 +35,29 @@ do {
     policy.resume()
     check(policy.decision(calls: [call()], enabled: true, now: 4) == .handled(firstID),
           "resume cannot grant a second start tap")
+}
+
+do {
+    var policy = AirRecordPolicy()
+    let outgoing = call(outgoing: true)
+    check(policy.decision(calls: [call(connected: false, outgoing: true)], enabled: true, now: 0)
+          == .connecting, "dialing does not start the hang-up grace period")
+    check(policy.decision(calls: [outgoing], enabled: true, now: 10) == .settling,
+          "outgoing connection leaves time to hang up")
+    check(policy.decision(calls: [outgoing], enabled: true, now: 12.9) == .settling,
+          "early poll cannot inspect the call screen")
+    check(policy.reserveMenuWindow(for: firstID, calls: [outgoing], now: 12.9) == nil,
+          "More cannot be reserved during the grace period")
+    check(!policy.reserveStart(for: firstID, calls: [outgoing]),
+          "recording cannot be reserved during the grace period")
+    check(policy.decision(calls: [call(ended: true, outgoing: true)], enabled: true, now: 12.9)
+          == .noCall, "hang-up cancels pending inspection")
+    check(policy.decision(calls: [outgoing], enabled: true, now: 15) == .settling,
+          "a new session with the same UUID gets its own grace period")
+    check(policy.decision(calls: [outgoing], enabled: true, now: 17.9) == .settling,
+          "a new connection still waits just before three seconds")
+    check(policy.decision(calls: [outgoing], enabled: true, now: 18) == .inspect(firstID),
+          "a connected outgoing call can be inspected after the grace period")
 }
 
 do {
@@ -483,8 +506,8 @@ do {
 do {
     typealias Wait = AirRecordRecordingWaitPolicy
     let generation = UUID(), laterGeneration = UUID()
-    let call = AirRecordCallState(id: firstID, hasConnected: true, hasEnded: false, isOnHold: false)
-    let other = AirRecordCallState(id: secondID, hasConnected: true, hasEnded: false, isOnHold: false)
+    let call = AirRecordCallState(id: firstID, isOutgoing: false, hasConnected: true, hasEnded: false, isOnHold: false)
+    let other = AirRecordCallState(id: secondID, isOutgoing: false, hasConnected: true, hasEnded: false, isOnHold: false)
     func observe(_ policy: inout Wait, now: TimeInterval = 101,
                  calls: [AirRecordCallState] = [], enabled: Bool = true,
                  current: UUID, owned: UUID, prepared: Bool? = true,
