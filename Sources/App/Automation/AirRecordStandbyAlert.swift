@@ -14,6 +14,21 @@ final class AirRecordNotificationDelegate: NSObject, UIApplicationDelegate, UNUs
         return true
     }
 
+    func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
+        guard application.applicationState != .active,
+              sceneSessions.contains(where: { $0.role == .windowApplication }),
+              !application.openSessions.contains(where: {
+                  $0.role == .windowApplication && !sceneSessions.contains($0)
+              }),
+              AirRecordMonitor.shared.isRunning else { return }
+        AirRecordStandbyAlert.shared.reportTermination()
+    }
+
+    func applicationWillTerminate(_ application: UIApplication) {
+        guard AirRecordMonitor.shared.isEnabled else { return }
+        AirRecordStandbyAlert.shared.reportTermination()
+    }
+
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         guard notification.request.identifier == statusNotificationID else { return [] }
@@ -101,9 +116,15 @@ final class AirRecordStandbyAlert: ObservableObject {
     }
 
     func reportTermination() {
-        guard let deadline, ContinuousClock.now < deadline else { return }
-        self.deadline = nil
-        schedule(title: "AirRec이 꺼졌어요", body: "자동 녹음을 다시 준비하려면 AirRec을 열어 주세요.", delay: 1)
+        guard isEnabled else { return }
+        let now = ContinuousClock.now
+        if let deadline, now >= deadline { return }
+
+        // Treat the check as due so a second lifecycle callback or heartbeat
+        // cannot overwrite this notification before iOS displays it.
+        deadline = now
+        schedule(title: "AirRec을 다시 열어 주세요", body: "AirRec이 종료됐어요. 자동 녹음을 다시 준비해 주세요.",
+                 delay: 1, waitForSubmission: true)
     }
 
     func disarm() {
@@ -118,12 +139,19 @@ final class AirRecordStandbyAlert: ObservableObject {
                  delay: TimeInterval(Self.graceSeconds))
     }
 
-    private func schedule(title: String, body: String, delay: TimeInterval) {
+    private func schedule(title: String, body: String, delay: TimeInterval, waitForSubmission: Bool = false) {
         // The same identifier replaces the pending check or termination alert.
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
         let request = notification(id: Self.notificationID, title: title, body: body, trigger: trigger)
+        let submission = waitForSubmission ? DispatchSemaphore(value: 0) : nil
         center.add(request) { error in
+            submission?.signal()
             if let error { airRecordLog("AirRec standby notification failed: \(error.localizedDescription)") }
+        }
+        if let submission {
+            // UIKit can exit as soon as its delegate returns. Allow a short
+            // handoff to the notification service without blocking indefinitely.
+            _ = submission.wait(timeout: .now() + .milliseconds(350))
         }
     }
 
