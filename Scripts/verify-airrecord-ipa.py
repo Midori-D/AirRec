@@ -18,7 +18,7 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.midori.airrec':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.3.11' or str(info.get('CFBundleVersion')) != '40':
+        if info.get('CFBundleShortVersionString') != '1.3.12' or str(info.get('CFBundleVersion')) != '41':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRec' or info.get('CFBundleName') != 'AirRec':
             raise ValueError('Unexpected app display name.')
@@ -117,7 +117,7 @@ def verify(path):
             count += 1
         if count < 1 or prefix+info['CFBundleExecutable'] not in names:
             raise ValueError('Main executable missing.')
-        print(f'PASS: AirRec 1.3.11 (40), location standby permission, AppIcon, outgoing, call-end, incoming and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
+        print(f'PASS: AirRec 1.3.12 (41), location standby permission, AppIcon, outgoing, call-end, incoming and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])

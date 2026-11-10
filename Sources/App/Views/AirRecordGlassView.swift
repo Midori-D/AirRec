@@ -213,9 +213,10 @@ struct AirRecordGlassView: View {
             DisclosureGroup("AirRec 초기 설정이란?") {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("AirRec이 이 아이폰의 개발자 서비스에 연결할 수 있도록 페어링 파일과 개발자 디스크를 준비하는 과정입니다.")
-                    AirRecordInfoRow("Q. 페어링 파일은 어디서 가져오나요?", value: "iLoader에서 '페어링 파일 관리'를 선택 후 기기로 가져오세요.")
+                    AirRecordInfoRow("Q. 페어링 파일은 어디서 가져오나요?", value: "iLoader에서 ‘페어링 파일 관리’를 선택한 뒤 기기로 가져오세요.")
                     AirRecordInfoRow("Q. DDI 파일은 어디에 저장되나요?", value: "다운로드한 파일은 AirRec 앱 데이터에 저장됩니다. AirRec을 삭제하면 다운로드한 파일도 지워집니다.")
                     AirRecordInfoRow("Q. 앱을 재설치하고 DDI를 내려받으면 용량이 늘어나나요?", value: "재설치 때마다 앱에 파일이 쌓이지는 않습니다.")
+                    AirRecordInfoRow("Q. 페어링 파일을 불러오려는데 응답이 없어요.", value: "파일 앱에서 .plist 파일을 길게 누른 뒤 ‘공유’ → ‘AirRec’을 선택하세요.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
@@ -259,7 +260,7 @@ struct AirRecordGlassView: View {
             ))
             .font(.headline)
             .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
-            Text("AirRec 비활성화 시 알립니다.")
+            Text("AirRec이 작동하지 않을 때 알립니다.")
                 .font(.footnote).foregroundStyle(.secondary)
             if standbyAlert.hasAlertPermission == true && !standby.isLiveContainer {
                 Label("알림 허용됨", systemImage: "checkmark.circle.fill")
@@ -329,9 +330,9 @@ struct AirRecordGlassView: View {
         DisclosureGroup("백그라운드 AirRec이란?") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("다른 앱을 사용하거나 화면이 꺼진 동안에도 통화 상태를 확인할 수 있도록 AirRec의 대기를 유지합니다.")
-                AirRecordInfoRow("Q. 위치 권한은 왜 필요한가요?", value: "iOS의 백그라운드 위치 기능을 이용하여 대기 상태를 유지합니다. 위치 업데이트는 받지만 좌표는 읽거나 저장·전송하지 않고, 업데이트 시각만 확인합니다.")
-                AirRecordInfoRow("Q. 배터리가 빨리 소모될 수 있나요?", value: "위치 사용 표시와 배터리 소모가 생길 수 있습니다.")
-                AirRecordInfoRow("Q. 알림은 언제 오나요?", value: "iOS가 종료 신호를 주면 바로 알립니다. 신호를 받지 못해도 백그라운드 감시가 약 3분 동안 확인되지 않으면 알립니다. 단축어의 ‘상태 확인’에서 통화 감시가 준비되지 않았을 때도 AirRec을 열어 달라는 알림을 보냅니다.")
+                AirRecordInfoRow("Q. 위치 권한은 왜 필요한가요?", value: "iOS의 백그라운드 위치 기능으로 대기 상태를 유지합니다. 위치 업데이트는 받지만 좌표는 읽거나 저장·전송하지 않고 업데이트 시각만 확인합니다.")
+                AirRecordInfoRow("Q. 배터리가 빨리 소모될 수 있나요?", value: "위치 사용 표시가 나타나거나 배터리가 더 빨리 소모될 수 있습니다.")
+                AirRecordInfoRow("Q. 알림은 언제 오나요?", value: "백그라운드 감시가 확인되지 않거나 단축어의 ‘상태 확인’에서 통화 감시가 준비되지 않았을 때 알림을 보냅니다.")
             }
             .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
         }
@@ -345,7 +346,7 @@ struct AirRecordGlassView: View {
 
     private var shortcutCard: some View {
         AirRecordCard {
-            AirRecordHeading("AirRec 자동화", systemImage: "square.stack.3d.up", tint: accent)
+            AirRecordHeading("AirRec 단축어 자동화", systemImage: "square.stack.3d.up", tint: accent)
             Divider()
             Link(destination: URL(string: "https://www.icloud.com/shortcuts/b362f158794f4d75870615194748b582")!) {
                 Label("AirRec(발신) 단축어 추가", systemImage: "plus.circle")
@@ -353,6 +354,7 @@ struct AirRecordGlassView: View {
             }
             .buttonStyle(.bordered).controlSize(.large)
             shortcutPermissionHint
+            shortcutExampleLink("AirRec(발신)", imageName: "AirRecOutgoingShortcutExample")
             Divider()
             Link(destination: URL(string: "https://www.icloud.com/shortcuts/17467870cbcd41c3a06912673661a8a4")!) {
                 Label("AirRec(수신) 단축어 추가", systemImage: "plus.circle")
@@ -360,38 +362,56 @@ struct AirRecordGlassView: View {
             }
             .buttonStyle(.bordered).controlSize(.large)
             shortcutPermissionHint
+            shortcutExampleLink("AirRec(수신)", imageName: "AirRecIncomingShortcutExample")
             Divider()
             Button { openAppSettings() } label: {
-                settingsActionLabel("단축어 설정 열기")
+                settingsActionLabel("AirRec 단축어 자동화 시 다이내믹 아일랜드 표시 숨기기")
             }
             .buttonStyle(.plain)
-            Text("다이내믹 아일랜드 진행 표시는 iOS의 ‘실시간 현황’ 설정에서 관리합니다. 단축어에서 표시되는 경우 설정의 ‘단축어’ 항목도 확인해 주세요.")
+            Text("AirRec 단축어 자동화 중 다이내믹 아일랜드 진행 표시가 불편하면 설정에서 꺼 주세요.")
                 .font(.footnote).foregroundStyle(.secondary)
             Divider()
-            DisclosureGroup("AirRec 자동화란?") {
+            DisclosureGroup("AirRec 단축어 자동화란?") {
                 VStack(alignment: .leading, spacing: 12) {
                     if standby.isLiveContainer {
                         Text("AirRec을 SideStore에 독립 설치한 뒤 단축어 동작을 사용하세요.")
                     }
-                    AirRecordInfoRow("1. 준비하기", value: "AirRec 초기 설정을 마치고 백그라운드 AirRec과 홈의 AirRec을 활성화하세요. 단축어를 추가한 뒤, 단축어 앱의 자동화에서 ‘전화 앱이 열릴 때’ LocalDevVPN을 연결하고 ‘AirRec(발신)’을 실행하도록 설정하세요.")
-                    AirRecordInfoRow("감시 상태 확인", value: "LocalDevVPN 연결 다음, Wi-Fi 조건문 앞에 ‘상태 확인’을 추가하세요. 결과가 ‘아니요’면 이 단축어를 중단하세요. iOS 알림을 허용하면 AirRec이 앱을 다시 열라는 알림을 즉시 요청합니다.")
-                    AirRecordInfoRow("2. Wi-Fi 확인하기", value: "Wi-Fi 네트워크 이름이 있으면 셀룰러 설정을 그대로 두세요. 이름이 비어 있을 때만 AirRec의 ‘발신’ 동작을 실행하세요.")
-                    AirRecordInfoRow("3. 발신을 감지하면 데이터 끄기", value: "‘발신’의 최대 대기 시간에 1~180초를 입력할 수 있습니다. 기본값은 20초이며, 25초를 넘기면 대기 중 iOS 진행 표시가 나타날 수 있습니다. 결과가 ‘예’일 때만 ‘셀룰러 데이터 끄기 → 발신종료 → 셀룰러 데이터 켜기’를 실행하세요.")
-                    AirRecordInfoRow("4. 통화가 끝나면 데이터 복구하기", value: "‘발신종료’는 활성 통화가 모두 끝날 때까지 기다립니다. 기본 60분, 최대 180분이며 대기 중 진행 표시가 나타납니다. 시간 초과에도 데이터를 복구하도록 ‘켜기’는 종료 결과와 관계없이 실행하세요. 단축어가 중단됐다면 데이터를 직접 켜 주세요.")
-                    AirRecordInfoRow("발신 녹음은 언제 시작하나요?", value: "발신 통화가 연결되면 설정한 시간만큼 기다린 뒤 ‘더 보기’를 엽니다. 음성사서함도 통화 연결로 인식될 수 있으니, 녹음을 원하지 않으면 대기 중에 전화를 끊어 주세요.")
-                    AirRecordInfoRow("수신 시험하기", value: "‘AirRec(수신) 단축어 추가’를 누른 뒤 단축어 앱에서 실행해 보세요. AirRec의 ‘수신’ 동작은 기본 20초 동안 응답 전의 수신 통화를 감지하면 ‘예’를 반환합니다. 자동으로 단축어를 시작할 수신 트리거는 아직 없습니다.")
-                    AirRecordInfoRow("기존 단축어 연결", value: "새 번들 ID로 설치한 후 기존 동작이 실행되지 않으면 단축어에서 AirRec의 ‘발신’과 ‘발신종료’를 다시 선택하세요.")
-                    AirRecordInfoRow("첫 통화 확인", value: "발신 감지는 단축어에서 따로 시험할 수 있습니다. 실제 녹음은 전화 화면의 타이머와 메모 앱에서 확인하세요. 전화 앱을 닫아도 통화는 이어질 수 있으므로 앱이 닫힐 때 VPN을 끄도록 설정하면 녹음 준비가 끊길 수 있습니다.")
+                    Text("Wi-Fi와 LocalDevVPN 연결 상태에 따라 AirRec의 동작이 달라질 수 있습니다. 단축어로 필요한 연결 동작을 자동화할 수 있습니다.")
+                    AirRecordInfoRow("1. AirRec(발신) 작동 원리", value: "전화 앱 열림 → LocalDevVPN 연결 → AirRec 상태 확인 → 발신 감지 → 셀룰러 데이터 끄기 → 통화 녹음 → 통화 종료 감지 → 셀룰러 데이터 켜기 → LocalDevVPN 연결 해제(선택 사항)")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
             .font(.subheadline)
+            Divider()
+            Link(destination: URL(string: "shortcuts://")!) {
+                settingsActionLabel("단축어 탭 열기")
+            }
+            .buttonStyle(.plain)
         }
     }
 
     private var shortcutPermissionHint: some View {
-        Text("처음 사용하기 전에 단축어 앱에서 단축어를 직접 한 번 실행해 필요한 권한을 허용해 주세요.")
-            .font(.footnote).foregroundStyle(.secondary)
+        Text("**중요** · 처음 사용하기 전에 아래 **‘단축어 탭 열기’를 누른 뒤 단축어를 직접 한 번 실행**해 필요한 권한을 허용해 주세요.")
+            .font(.footnote).foregroundStyle(.primary)
+    }
+
+    private func shortcutExampleLink(_ title: String, imageName: String) -> some View {
+        NavigationLink {
+            ScrollView {
+                Image(imageName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 540)
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .accessibilityLabel("\(title) 단축어 구성 화면")
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+        } label: {
+            settingsActionLabel("\(title) 구성 예시", systemImage: "chevron.right")
+        }
+        .buttonStyle(.plain)
     }
 
     private var outgoingDelayCard: some View {
@@ -437,11 +457,11 @@ struct AirRecordGlassView: View {
         .buttonStyle(.plain)
     }
 
-    private func settingsActionLabel(_ title: String) -> some View {
+    private func settingsActionLabel(_ title: String, systemImage: String = "arrow.up.forward.app") -> some View {
         HStack(spacing: 12) {
             Text(title).foregroundStyle(.primary)
             Spacer(minLength: 8)
-            Image(systemName: "arrow.up.forward.app")
+            Image(systemName: systemImage)
                 .foregroundStyle(accent)
                 .accessibilityHidden(true)
         }
