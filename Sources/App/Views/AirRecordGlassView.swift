@@ -290,32 +290,39 @@ struct AirRecordGlassView: View {
 
     private var locationPermissionStatuses: some View {
         let canReadPermissions = !standby.isLiveContainer
+        let showAlwaysInIndicatorSettings = standby.isEnabled && standby.indicatorMinimizationEnabled
+            && standby.hasAlwaysAuthorization && canReadPermissions
+        let reducedAccuracy = standby.isPreciseLocationEnabled.map { !$0 }
         return VStack(alignment: .leading, spacing: 8) {
-            locationPermissionRow("앱을 사용하는 동안", isOn: canReadPermissions ? standby.hasWhenInUseAuthorization : nil,
-                                  onText: "허용 확인됨", offText: "선택 안 됨")
-            locationPermissionRow("정확한 위치", isOn: canReadPermissions ? standby.isPreciseLocationEnabled : nil,
-                                  onText: "켜짐", offText: "꺼짐")
-            locationPermissionRow("항상 허용", isOn: canReadPermissions ? standby.hasAlwaysAuthorization : nil,
-                                  onText: "확인됨", offText: "선택 안 됨")
+            if !showAlwaysInIndicatorSettings {
+                locationPermissionRow("앱을 사용하는 동안", confirmed: canReadPermissions ? standby.hasWhenInUseAuthorization : nil,
+                                      confirmedText: "허용 확인됨", unconfirmedText: "선택 안 됨")
+            }
+            locationPermissionRow("정확한 위치", confirmed: canReadPermissions ? reducedAccuracy : nil,
+                                  confirmedText: "꺼짐", unconfirmedText: "켜짐")
         }
     }
 
-    private func locationPermissionRow(_ title: String, isOn: Bool?, onText: String, offText: String) -> some View {
+    private func locationPermissionRow(_ title: String, confirmed: Bool?,
+                                       confirmedText: String, unconfirmedText: String) -> some View {
         let state: String
-        switch isOn {
-        case .some(true): state = onText
-        case .some(false): state = offText
+        switch confirmed {
+        case .some(true): state = confirmedText
+        case .some(false): state = unconfirmedText
         case .none: state = "확인 불가"
         }
-        let confirmed = isOn == true
-        return Label("\(title) \(state)", systemImage: confirmed ? "checkmark.circle.fill" : "xmark.circle.fill")
+        let showCheck = confirmed == true
+        return Label("\(title) \(state)", systemImage: showCheck ? "checkmark.circle.fill" : "xmark.circle.fill")
             .font(.footnote.weight(.medium))
-            .foregroundStyle(confirmed ? Color.green : Color.red)
+            .foregroundStyle(showCheck ? Color.green : Color.red)
     }
 
     @ViewBuilder
     private var indicatorPermissionControls: some View {
-        if !standby.hasAlwaysAuthorization {
+        if standby.hasAlwaysAuthorization {
+            locationPermissionRow("항상 허용", confirmed: standby.isLiveContainer ? nil : true,
+                                  confirmedText: "확인됨", unconfirmedText: "선택 안 됨")
+        } else {
             Text("위치 표시를 숨기려면 위치 권한을 ‘항상 허용’으로 설정해야 합니다.")
                 .font(.footnote).foregroundStyle(.secondary)
             Button { standby.requestAlwaysAuthorization() } label: {
@@ -397,6 +404,7 @@ struct AirRecordGlassView: View {
                     AirRecordInfoRow("2. Wi-Fi 확인하기", value: "Wi-Fi 네트워크 이름이 있으면 셀룰러 설정을 그대로 두세요. 이름이 비어 있을 때만 AirRec의 ‘발신’ 동작을 실행하세요.")
                     AirRecordInfoRow("3. 발신을 감지하면 데이터 끄기", value: "‘발신’의 최대 대기 시간에 1~180초를 입력할 수 있습니다. 기본값은 20초이며, 25초를 넘기면 대기 중 iOS 진행 표시가 나타날 수 있습니다. 결과가 ‘예’일 때만 ‘셀룰러 데이터 끄기 → 발신종료 → 셀룰러 데이터 켜기’를 실행하세요.")
                     AirRecordInfoRow("4. 통화가 끝나면 데이터 복구하기", value: "‘발신종료’는 활성 통화가 모두 끝날 때까지 기다립니다. 기본 60분, 최대 180분이며 대기 중 진행 표시가 나타납니다. 시간 초과에도 데이터를 복구하도록 ‘켜기’는 종료 결과와 관계없이 실행하세요. 단축어가 중단됐다면 데이터를 직접 켜 주세요.")
+                    AirRecordInfoRow("수신 시험하기", value: "단축어 앱에서 AirRec의 ‘수신’ 동작을 실행한 뒤 다른 전화기로 걸어 보세요. 기본 20초 동안 응답 전의 수신 통화를 감지하면 ‘예’를 반환합니다. 자동으로 단축어를 시작할 수신 트리거는 아직 없습니다.")
                     AirRecordInfoRow("기존 단축어 연결", value: "새 번들 ID로 설치한 후 기존 동작이 실행되지 않으면 단축어에서 AirRec의 ‘발신’과 ‘발신종료’를 다시 선택하세요.")
                     AirRecordInfoRow("첫 통화 확인", value: "발신 감지는 단축어에서 따로 시험할 수 있습니다. 실제 녹음은 전화 화면의 타이머와 메모 앱에서 확인하세요. 전화 앱을 닫아도 통화는 이어질 수 있으므로 앱이 닫힐 때 VPN을 끄도록 설정하면 녹음 준비가 끊길 수 있습니다.")
                 }

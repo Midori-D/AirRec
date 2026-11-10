@@ -1,37 +1,42 @@
 // Copyright 2026 AirRecord contributors. SPDX-License-Identifier: Apache-2.0
 import Foundation
 
-/// Observes call direction only. A separate instance belongs to each wait.
-struct AirRecordOutgoingWaitPolicy {
+/// A bounded observation of a call starting or ringing.
+struct AirRecordCallWaitPolicy {
+    enum Target: Equatable { case outgoing, incomingRinging }
+
     struct Call: Equatable {
         let isOutgoing: Bool
+        let hasConnected: Bool
         let hasEnded: Bool
         let isOnHold: Bool
     }
 
     enum Result: Equatable {
-        case outgoing, multipleCalls, held, cancelled, timedOut, invalidClock
+        case detected, multipleCalls, held, cancelled, timedOut, invalidClock
 
-        var detectedOutgoing: Bool { self == .outgoing }
+        var didDetectCall: Bool { self == .detected }
     }
 
     enum Decision: Equatable { case waiting, finished(Result) }
 
     static let defaultTimeout: TimeInterval = 20
-    static let maximumTimeout: TimeInterval = 180
 
     let startedAt: TimeInterval
     let deadline: TimeInterval
+    private let target: Target
     private var lastObservedAt: TimeInterval
     private var terminal: Result?
 
-    static func boundedTimeout(_ value: TimeInterval) -> TimeInterval {
-        value.isFinite ? min(maximumTimeout, max(1, value)) : defaultTimeout
+    static func boundedTimeout(_ value: TimeInterval, target: Target = .outgoing) -> TimeInterval {
+        let maximum: TimeInterval = target == .outgoing ? 180 : 25
+        return value.isFinite ? min(maximum, max(1, value)) : defaultTimeout
     }
 
-    init(startedAt: TimeInterval, timeout: TimeInterval) {
+    init(startedAt: TimeInterval, timeout: TimeInterval, target: Target = .outgoing) {
         self.startedAt = startedAt
-        deadline = startedAt + Self.boundedTimeout(timeout)
+        self.target = target
+        deadline = startedAt + Self.boundedTimeout(timeout, target: target)
         lastObservedAt = startedAt
     }
 
@@ -44,10 +49,15 @@ struct AirRecordOutgoingWaitPolicy {
         // A late observer callback cannot turn an expired wait into success.
         guard now < deadline else { return finish(.timedOut) }
         let active = calls.filter { !$0.hasEnded }
+        if target == .incomingRinging {
+            // A ringing call can arrive during an unrelated connected call.
+            let ringing = active.contains { !$0.isOutgoing && !$0.hasConnected && !$0.isOnHold }
+            return ringing ? finish(.detected) : .waiting
+        }
         guard active.count <= 1 else { return finish(.multipleCalls) }
         guard let call = active.first else { return .waiting }
         guard !call.isOnHold else { return finish(.held) }
-        return call.isOutgoing ? finish(.outgoing) : .waiting
+        return call.isOutgoing ? finish(.detected) : .waiting
     }
 
     private mutating func finish(_ result: Result) -> Decision {

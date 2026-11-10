@@ -5,7 +5,7 @@ import Foundation
 
 /// The cancellation handler can run off the main actor, before its cleanup
 /// task gets actor time. Publish cancellation before another call event wins.
-private final class AirRecordOutgoingWaitCancellation: @unchecked Sendable {
+private final class AirRecordCallWaitCancellation: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
 
@@ -25,11 +25,12 @@ private final class AirRecordOutgoingWaitCancellation: @unchecked Sendable {
 /// Independent of recording preparation, VPN, saved settings, and the monitor.
 /// CallKit does not identify the calling app, so this can also detect VoIP calls.
 @MainActor
-enum AirRecordOutgoingCallWaiter {
-    static func wait(timeout: TimeInterval = AirRecordOutgoingWaitPolicy.defaultTimeout,
+enum AirRecordCallWaiter {
+    static func wait(target: AirRecordCallWaitPolicy.Target = .outgoing,
+                     timeout: TimeInterval = AirRecordCallWaitPolicy.defaultTimeout,
                      onProgress: (@MainActor @Sendable (TimeInterval) -> Void)? = nil) async -> Bool {
-        let cancellation = AirRecordOutgoingWaitCancellation()
-        let request = Request(timeout: timeout, cancellation: cancellation, onProgress: onProgress)
+        let cancellation = AirRecordCallWaitCancellation()
+        let request = Request(target: target, timeout: timeout, cancellation: cancellation, onProgress: onProgress)
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 request.start(continuation, cancelled: Task.isCancelled)
@@ -43,19 +44,20 @@ enum AirRecordOutgoingCallWaiter {
     @MainActor
     private final class Request: NSObject, CXCallObserverDelegate {
         private let observer = CXCallObserver()
-        private let cancellation: AirRecordOutgoingWaitCancellation
+        private let cancellation: AirRecordCallWaitCancellation
         private let onProgress: (@MainActor @Sendable (TimeInterval) -> Void)?
-        private var policy: AirRecordOutgoingWaitPolicy
+        private var policy: AirRecordCallWaitPolicy
         private var continuation: CheckedContinuation<Bool, Never>?
         private var timeoutTask: Task<Void, Never>?
         private var started = false
 
-        init(timeout: TimeInterval, cancellation: AirRecordOutgoingWaitCancellation,
+        init(target: AirRecordCallWaitPolicy.Target, timeout: TimeInterval,
+             cancellation: AirRecordCallWaitCancellation,
              onProgress: (@MainActor @Sendable (TimeInterval) -> Void)?) {
             self.cancellation = cancellation
             self.onProgress = onProgress
-            policy = AirRecordOutgoingWaitPolicy(
-                startedAt: ProcessInfo.processInfo.systemUptime, timeout: timeout)
+            policy = AirRecordCallWaitPolicy(
+                startedAt: ProcessInfo.processInfo.systemUptime, timeout: timeout, target: target)
             super.init()
         }
 
@@ -112,9 +114,8 @@ enum AirRecordOutgoingCallWaiter {
         private func evaluate(cancelled: Bool = false) {
             guard let continuation else { return }
             let calls = observer.calls.map {
-                AirRecordOutgoingWaitPolicy.Call(isOutgoing: $0.isOutgoing,
-                                                hasEnded: $0.hasEnded,
-                                                isOnHold: $0.isOnHold)
+                AirRecordCallWaitPolicy.Call(isOutgoing: $0.isOutgoing, hasConnected: $0.hasConnected,
+                                             hasEnded: $0.hasEnded, isOnHold: $0.isOnHold)
             }
             let now = ProcessInfo.processInfo.systemUptime
             let decision = policy.decision(now: now, calls: calls,
@@ -127,7 +128,7 @@ enum AirRecordOutgoingCallWaiter {
                 observer.setDelegate(nil, queue: nil)
                 timeoutTask?.cancel()
                 timeoutTask = nil
-                continuation.resume(returning: result.detectedOutgoing && !cancellation.isCancelled)
+                continuation.resume(returning: result.didDetectCall && !cancellation.isCancelled)
             }
         }
     }

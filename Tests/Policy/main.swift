@@ -571,11 +571,11 @@ do {
 }
 
 do {
-    typealias Wait = AirRecordOutgoingWaitPolicy
-    let outgoing = Wait.Call(isOutgoing: true, hasEnded: false, isOnHold: false)
-    let incoming = Wait.Call(isOutgoing: false, hasEnded: false, isOnHold: false)
-    let ended = Wait.Call(isOutgoing: true, hasEnded: true, isOnHold: false)
-    let held = Wait.Call(isOutgoing: true, hasEnded: false, isOnHold: true)
+    typealias Wait = AirRecordCallWaitPolicy
+    let outgoing = Wait.Call(isOutgoing: true, hasConnected: false, hasEnded: false, isOnHold: false)
+    let incoming = Wait.Call(isOutgoing: false, hasConnected: false, hasEnded: false, isOnHold: false)
+    let ended = Wait.Call(isOutgoing: true, hasConnected: false, hasEnded: true, isOnHold: false)
+    let held = Wait.Call(isOutgoing: true, hasConnected: false, hasEnded: false, isOnHold: true)
 
     check(Wait.boundedTimeout(0) == 1 && Wait.boundedTimeout(-10) == 1
           && Wait.boundedTimeout(1000) == 180 && Wait.boundedTimeout(20) == 20
@@ -584,15 +584,15 @@ do {
     check(Wait.boundedTimeout(.nan) == 20 && Wait.boundedTimeout(.infinity) == 20,
           "outgoing waits use a finite twenty-second default for invalid timeouts")
     var existing = Wait(startedAt: 100, timeout: 20)
-    check(existing.decision(now: 100, calls: [outgoing]) == .finished(.outgoing),
+    check(existing.decision(now: 100, calls: [outgoing]) == .finished(.detected),
           "an existing single outgoing call immediately satisfies a new wait without requiring connection")
-    check(existing.decision(now: 101, calls: [], cancelled: true) == .finished(.outgoing),
+    check(existing.decision(now: 101, calls: [], cancelled: true) == .finished(.detected),
           "a completed request is immutable when late cancellation or callbacks arrive")
 
     var longWait = Wait(startedAt: 100, timeout: 180)
     check(longWait.decision(now: 126, calls: []) == .waiting,
           "a configured long outgoing wait survives the previous 25-second cap")
-    check(longWait.decision(now: 279, calls: [outgoing]) == .finished(.outgoing),
+    check(longWait.decision(now: 279, calls: [outgoing]) == .finished(.detected),
           "outgoing evidence can complete a three-minute wait early")
     var longDeadline = Wait(startedAt: 100, timeout: 1000)
     check(longDeadline.decision(now: 280, calls: [outgoing]) == .finished(.timedOut),
@@ -607,7 +607,7 @@ do {
           "a stale ended outgoing call alongside an incoming call cannot satisfy the wait")
     check(direction.decision(now: 103, calls: [ended]) == .waiting,
           "an ended outgoing call alone cannot satisfy the wait")
-    check(direction.decision(now: 104, calls: [ended, outgoing]) == .finished(.outgoing),
+    check(direction.decision(now: 104, calls: [ended, outgoing]) == .finished(.detected),
           "ended calls do not make a genuinely single active outgoing call ambiguous")
 
     var multiple = Wait(startedAt: 100, timeout: 20)
@@ -620,7 +620,7 @@ do {
           "a held outgoing call fails rather than reporting a new usable outgoing call")
 
     var before = Wait(startedAt: 100, timeout: 20)
-    check(before.decision(now: 119.999, calls: [outgoing]) == .finished(.outgoing),
+    check(before.decision(now: 119.999, calls: [outgoing]) == .finished(.detected),
           "an outgoing observation before the monotonic deadline may succeed")
     var boundary = Wait(startedAt: 100, timeout: 20)
     check(boundary.decision(now: 120, calls: [outgoing]) == .finished(.timedOut),
@@ -635,7 +635,7 @@ do {
     check(cancelled.decision(now: 101, calls: [outgoing], cancelled: true) == .finished(.cancelled),
           "observed cancellation takes precedence over simultaneous outgoing evidence")
     var independent = Wait(startedAt: 101, timeout: 20)
-    check(independent.decision(now: 102, calls: [outgoing]) == .finished(.outgoing),
+    check(independent.decision(now: 102, calls: [outgoing]) == .finished(.detected),
           "a separate request remains independent of another request's cancellation")
     check(cancelled.decision(now: 103, calls: [outgoing]) == .finished(.cancelled),
           "an old request's late event stays terminal while a newer request succeeds")
@@ -648,9 +648,36 @@ do {
     check(invalid.decision(now: 100, calls: [outgoing]) == .finished(.invalidClock),
           "an invalid initial clock cannot create an unbounded or successful wait")
     for result in [Wait.Result.multipleCalls, .held, .cancelled, .timedOut, .invalidClock] {
-        check(!result.detectedOutgoing, "only the outgoing terminal result maps to true")
+        check(!result.didDetectCall, "only the outgoing terminal result maps to true")
     }
-    check(Wait.Result.outgoing.detectedOutgoing, "outgoing evidence maps to true")
+    check(Wait.Result.detected.didDetectCall, "outgoing evidence maps to true")
+}
+
+do {
+    typealias Wait = AirRecordCallWaitPolicy
+    let ringing = Wait.Call(isOutgoing: false, hasConnected: false, hasEnded: false, isOnHold: false)
+    let answered = Wait.Call(isOutgoing: false, hasConnected: true, hasEnded: false, isOnHold: false)
+    let ended = Wait.Call(isOutgoing: false, hasConnected: false, hasEnded: true, isOnHold: false)
+    let held = Wait.Call(isOutgoing: false, hasConnected: false, hasEnded: false, isOnHold: true)
+    let outgoing = Wait.Call(isOutgoing: true, hasConnected: false, hasEnded: false, isOnHold: false)
+
+    check(Wait.boundedTimeout(1000, target: .incomingRinging) == 25
+          && Wait.boundedTimeout(0, target: .incomingRinging) == 1,
+          "incoming waits keep the requested seconds within one through twenty-five")
+    var existing = Wait(startedAt: 100, timeout: 20, target: .incomingRinging)
+    check(existing.decision(now: 100, calls: [ringing]) == .finished(.detected),
+          "an already ringing incoming call succeeds immediately")
+    var wait = Wait(startedAt: 100, timeout: 20, target: .incomingRinging)
+    check(wait.decision(now: 101, calls: [answered, ended, held, outgoing]) == .waiting,
+          "answered, ended, held and outgoing calls do not satisfy incoming detection")
+    check(wait.decision(now: 102, calls: [answered, ringing]) == .finished(.detected),
+          "an unrelated active call does not hide an incoming call that is ringing")
+    var timeout = Wait(startedAt: 100, timeout: 20, target: .incomingRinging)
+    check(timeout.decision(now: 120, calls: [ringing]) == .finished(.timedOut),
+          "a ringing event at the incoming deadline is already too late")
+    var cancelled = Wait(startedAt: 100, timeout: 20, target: .incomingRinging)
+    check(cancelled.decision(now: 101, calls: [ringing], cancelled: true) == .finished(.cancelled),
+          "cancellation takes precedence over a ringing call")
 }
 
 do {
