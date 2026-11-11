@@ -46,12 +46,15 @@ final class AirRecordStandbyAlert: ObservableObject {
 
     @Published private(set) var isEnabled = UserDefaults.standard.bool(forKey: AirRecordStandbyAlert.preferenceKey)
     @Published private(set) var isIncomingEnabled = UserDefaults.standard.bool(forKey: AirRecordStandbyAlert.incomingPreferenceKey)
+    @Published private(set) var lastIncomingNotificationAt =
+        UserDefaults.standard.object(forKey: AirRecordStandbyAlert.lastIncomingNotificationKey) as? Date
     @Published private(set) var isRequestingPermission = false
     @Published private(set) var hasAlertPermission: Bool?
     @Published private(set) var canRequestPermission = false
 
     private static let preferenceKey = "AirRecord.standbyAlert.enabled"
     private static let incomingPreferenceKey = "AirRecord.incomingAlert.enabled"
+    private static let lastIncomingNotificationKey = "AirRecord.incomingAlert.lastNotificationAt"
     private static let notificationID = "AirRecord.standbyAlert"
     private static let graceSeconds = 180
     private let center = UNUserNotificationCenter.current()
@@ -129,6 +132,9 @@ final class AirRecordStandbyAlert: ObservableObject {
                                             content: content, trigger: nil)
         do {
             try await center.add(request)
+            let submittedAt = Date()
+            lastIncomingNotificationAt = submittedAt
+            defaults.set(submittedAt, forKey: Self.lastIncomingNotificationKey)
             return true
         } catch {
             airRecordLog("AirRec incoming notification failed: \(error.localizedDescription)")

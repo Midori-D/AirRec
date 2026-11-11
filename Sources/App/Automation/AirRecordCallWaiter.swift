@@ -26,11 +26,10 @@ private final class AirRecordCallWaitCancellation: @unchecked Sendable {
 /// CallKit does not identify the calling app, so this can also detect VoIP calls.
 @MainActor
 enum AirRecordCallWaiter {
-    static func wait(target: AirRecordCallWaitPolicy.Target = .outgoing,
-                     timeout: TimeInterval = AirRecordCallWaitPolicy.defaultTimeout,
+    static func wait(timeout: TimeInterval = AirRecordCallWaitPolicy.defaultTimeout,
                      onProgress: (@MainActor @Sendable (TimeInterval) -> Void)? = nil) async -> Bool {
         let cancellation = AirRecordCallWaitCancellation()
-        let request = Request(target: target, timeout: timeout, cancellation: cancellation, onProgress: onProgress)
+        let request = Request(timeout: timeout, cancellation: cancellation, onProgress: onProgress)
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 request.start(continuation, cancelled: Task.isCancelled)
@@ -51,13 +50,13 @@ enum AirRecordCallWaiter {
         private var timeoutTask: Task<Void, Never>?
         private var started = false
 
-        init(target: AirRecordCallWaitPolicy.Target, timeout: TimeInterval,
+        init(timeout: TimeInterval,
              cancellation: AirRecordCallWaitCancellation,
              onProgress: (@MainActor @Sendable (TimeInterval) -> Void)?) {
             self.cancellation = cancellation
             self.onProgress = onProgress
             policy = AirRecordCallWaitPolicy(
-                startedAt: ProcessInfo.processInfo.systemUptime, timeout: timeout, target: target)
+                startedAt: ProcessInfo.processInfo.systemUptime, timeout: timeout)
             super.init()
         }
 
@@ -114,8 +113,8 @@ enum AirRecordCallWaiter {
         private func evaluate(cancelled: Bool = false) {
             guard let continuation else { return }
             let calls = observer.calls.map {
-                AirRecordCallWaitPolicy.Call(isOutgoing: $0.isOutgoing, hasConnected: $0.hasConnected,
-                                             hasEnded: $0.hasEnded, isOnHold: $0.isOnHold)
+                AirRecordCallWaitPolicy.Call(isOutgoing: $0.isOutgoing, hasEnded: $0.hasEnded,
+                                             isOnHold: $0.isOnHold)
             }
             let now = ProcessInfo.processInfo.systemUptime
             let decision = policy.decision(now: now, calls: calls,

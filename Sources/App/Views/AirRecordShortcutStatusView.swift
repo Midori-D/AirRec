@@ -9,13 +9,14 @@ struct AirRecordShortcutStatusView: View {
 
     let accent: Color
     var kind: Kind = .outgoing
+    var incomingNotificationAt: Date? = nil
     @StateObject private var presence = AirRecordShortcutPresence.shared
 
-    private var lastActionRunAt: Date? {
+    private var lastEventAt: Date? {
         switch kind {
         case .outgoing: return presence.lastActionRunAt
         case .end: return presence.lastEndActionRunAt
-        case .incoming: return presence.lastIncomingActionRunAt
+        case .incoming: return incomingNotificationAt
         }
     }
 
@@ -36,15 +37,16 @@ struct AirRecordShortcutStatusView: View {
     }
 
     var body: some View {
+        let eventName = kind == .incoming ? "수신 알림 요청" : "자동화 실행"
         AirRecordCard {
             AirRecordStatusRow(title: title, systemImage: systemImage,
-                               isConfirmed: lastActionRunAt != nil, accent: accent,
-                               accessibilityValue: lastActionRunAt == nil ? "자동화 실행 기록 없음" : "자동화 실행 기록 확인됨")
-            if let used = lastActionRunAt {
-                Text("최근 자동화 실행: \(used.formatted(date: .abbreviated, time: .shortened))")
+                               isConfirmed: lastEventAt != nil, accent: accent,
+                               accessibilityValue: lastEventAt == nil ? "\(eventName) 기록 없음" : "\(eventName) 기록 확인됨")
+            if let used = lastEventAt {
+                Text("최근 \(eventName): \(used.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Text("자동화를 실행하면 체크가 표시됩니다.")
+                Text(kind == .incoming ? "수신 알림을 보내면 체크가 표시됩니다." : "자동화를 실행하면 체크가 표시됩니다.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

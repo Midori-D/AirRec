@@ -617,10 +617,10 @@ do {
 
 do {
     typealias Wait = AirRecordCallWaitPolicy
-    let outgoing = Wait.Call(isOutgoing: true, hasConnected: false, hasEnded: false, isOnHold: false)
-    let incoming = Wait.Call(isOutgoing: false, hasConnected: false, hasEnded: false, isOnHold: false)
-    let ended = Wait.Call(isOutgoing: true, hasConnected: false, hasEnded: true, isOnHold: false)
-    let held = Wait.Call(isOutgoing: true, hasConnected: false, hasEnded: false, isOnHold: true)
+    let outgoing = Wait.Call(isOutgoing: true, hasEnded: false, isOnHold: false)
+    let incoming = Wait.Call(isOutgoing: false, hasEnded: false, isOnHold: false)
+    let ended = Wait.Call(isOutgoing: true, hasEnded: true, isOnHold: false)
+    let held = Wait.Call(isOutgoing: true, hasEnded: false, isOnHold: true)
 
     check(Wait.boundedTimeout(0) == 1 && Wait.boundedTimeout(-10) == 1
           && Wait.boundedTimeout(1000) == 180 && Wait.boundedTimeout(20) == 20
@@ -696,33 +696,6 @@ do {
         check(!result.didDetectCall, "only the outgoing terminal result maps to true")
     }
     check(Wait.Result.detected.didDetectCall, "outgoing evidence maps to true")
-}
-
-do {
-    typealias Wait = AirRecordCallWaitPolicy
-    let ringing = Wait.Call(isOutgoing: false, hasConnected: false, hasEnded: false, isOnHold: false)
-    let answered = Wait.Call(isOutgoing: false, hasConnected: true, hasEnded: false, isOnHold: false)
-    let ended = Wait.Call(isOutgoing: false, hasConnected: false, hasEnded: true, isOnHold: false)
-    let held = Wait.Call(isOutgoing: false, hasConnected: false, hasEnded: false, isOnHold: true)
-    let outgoing = Wait.Call(isOutgoing: true, hasConnected: false, hasEnded: false, isOnHold: false)
-
-    check(Wait.boundedTimeout(1000, target: .incomingRinging) == 25
-          && Wait.boundedTimeout(0, target: .incomingRinging) == 1,
-          "incoming waits keep the requested seconds within one through twenty-five")
-    var existing = Wait(startedAt: 100, timeout: 20, target: .incomingRinging)
-    check(existing.decision(now: 100, calls: [ringing]) == .finished(.detected),
-          "an already ringing incoming call succeeds immediately")
-    var wait = Wait(startedAt: 100, timeout: 20, target: .incomingRinging)
-    check(wait.decision(now: 101, calls: [answered, ended, held, outgoing]) == .waiting,
-          "answered, ended, held and outgoing calls do not satisfy incoming detection")
-    check(wait.decision(now: 102, calls: [answered, ringing]) == .finished(.detected),
-          "an unrelated active call does not hide an incoming call that is ringing")
-    var timeout = Wait(startedAt: 100, timeout: 20, target: .incomingRinging)
-    check(timeout.decision(now: 120, calls: [ringing]) == .finished(.timedOut),
-          "a ringing event at the incoming deadline is already too late")
-    var cancelled = Wait(startedAt: 100, timeout: 20, target: .incomingRinging)
-    check(cancelled.decision(now: 101, calls: [ringing], cancelled: true) == .finished(.cancelled),
-          "cancellation takes precedence over a ringing call")
 }
 
 do {

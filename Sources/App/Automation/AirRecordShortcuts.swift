@@ -176,26 +176,6 @@ struct CheckAirRecordStatusIntent: AppIntent {
     }
 }
 
-struct WaitForAirRecordIncomingCallIntent: AppIntent {
-    static var title: LocalizedStringResource = "수신"
-    static var description: IntentDescription = "실행 중에 걸려오는 통화를 기본 20초 동안 기다립니다. 응답 전 수신을 감지하면 즉시 ‘예’, 대기 시간이 끝나면 ‘아니요’를 반환합니다. FaceTime 등 CallKit 통화도 감지할 수 있습니다."
-    static var supportedModes: IntentModes { [.background] }
-    static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
-
-    @Parameter(title: "최대 대기 시간(초)", default: 20, controlStyle: .field, inclusiveRange: (1, 25))
-    var waitSeconds: Int
-
-    @MainActor
-    func perform() async -> some IntentResult & ReturnsValue<Bool> {
-        AirRecordShortcutPresence.shared.recordIncomingActionRun()
-        airRecordLog("Incoming wait intent: started")
-        let incoming = await AirRecordCallWaiter.wait(target: .incomingRinging, timeout: TimeInterval(waitSeconds))
-        let detected = incoming && !Task.isCancelled
-        airRecordLog("Incoming wait intent: result=\(detected)")
-        return .result(value: detected)
-    }
-}
-
 struct AirRecordShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -215,12 +195,6 @@ struct AirRecordShortcuts: AppShortcutsProvider {
             phrases: ["\(.applicationName) 상태 확인"],
             shortTitle: "상태 확인",
             systemImageName: "checkmark.shield"
-        )
-        AppShortcut(
-            intent: WaitForAirRecordIncomingCallIntent(),
-            phrases: ["\(.applicationName) 수신"],
-            shortTitle: "수신",
-            systemImageName: "phone.arrow.down.left"
         )
     }
 }

@@ -99,7 +99,8 @@ struct AirRecordGlassView: View {
             // 추후 구현...
             AirRecordShortcutStatusView(accent: accent)
             AirRecordShortcutStatusView(accent: accent, kind: .end)
-            AirRecordShortcutStatusView(accent: accent, kind: .incoming)
+            AirRecordShortcutStatusView(accent: accent, kind: .incoming,
+                                        incomingNotificationAt: standbyAlert.lastIncomingNotificationAt)
             AirRecordPlannedFeatureView(title: "AirRec 수신종료 자동화", systemImage: "phone.down.fill", accent: accent)
             AirRecordPlannedFeatureView(title: "AirRec 메모 이름 수정", systemImage: "note.text", accent: accent)
             AirRecordPlannedFeatureView(title: "AirBeep (통화 녹음 고지 제거)", systemImage: "speaker.slash", accent: accent)
@@ -201,7 +202,7 @@ struct AirRecordGlassView: View {
             preparationCard
             backgroundCard
             shortcutCard
-            outgoingDelayCard
+            callTimingCard
             AirRecordVersionLabel(version: version)
                 .font(.footnote)
                 .frame(maxWidth: .infinity).padding(.vertical, 4)
@@ -274,10 +275,8 @@ struct AirRecordGlassView: View {
             .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
             Text("AirRec이 작동하지 않을 때 알립니다.")
                 .font(.footnote).foregroundStyle(.secondary)
-            if standbyAlert.hasAlertPermission == true && !standby.isLiveContainer {
-                Label("알림 허용됨", systemImage: "checkmark.circle.fill")
-                    .font(.footnote.weight(.medium)).foregroundStyle(.green)
-            } else if standbyAlert.hasAlertPermission == false {
+            notificationPermissionStatus
+            if standbyAlert.hasAlertPermission == false && !standby.isLiveContainer {
                 Text("아래의 ‘AirRec 설정 열기’를 탭해 알림과 배너를 허용해 주세요.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -298,16 +297,16 @@ struct AirRecordGlassView: View {
         let reducedAccuracy = standby.isPreciseLocationEnabled.map { !$0 }
         return VStack(alignment: .leading, spacing: 8) {
             if !showAlwaysInIndicatorSettings {
-                locationPermissionRow("앱을 사용하는 동안", confirmed: canReadPermissions ? standby.hasWhenInUseAuthorization : nil,
+                permissionStatusRow("앱을 사용하는 동안", confirmed: canReadPermissions ? standby.hasWhenInUseAuthorization : nil,
                                       confirmedText: "허용 확인됨", unconfirmedText: "선택 안 됨")
             }
-            locationPermissionRow("정확한 위치", confirmed: canReadPermissions ? reducedAccuracy : nil,
+            permissionStatusRow("정확한 위치", confirmed: canReadPermissions ? reducedAccuracy : nil,
                                   confirmedText: "꺼짐", unconfirmedText: "켜짐")
         }
     }
 
-    private func locationPermissionRow(_ title: String, confirmed: Bool?,
-                                       confirmedText: String, unconfirmedText: String) -> some View {
+    private func permissionStatusRow(_ title: String, confirmed: Bool?,
+                                     confirmedText: String, unconfirmedText: String) -> some View {
         let state: String
         switch confirmed {
         case .some(true): state = confirmedText
@@ -321,9 +320,17 @@ struct AirRecordGlassView: View {
     }
 
     @ViewBuilder
+    private var notificationPermissionStatus: some View {
+        if !standby.isLiveContainer, let allowed = standbyAlert.hasAlertPermission {
+            permissionStatusRow("알림", confirmed: allowed,
+                                confirmedText: "허용됨", unconfirmedText: "허용 안 됨")
+        }
+    }
+
+    @ViewBuilder
     private var indicatorPermissionControls: some View {
         if standby.hasAlwaysAuthorization {
-            locationPermissionRow("항상 허용", confirmed: standby.isLiveContainer ? nil : true,
+            permissionStatusRow("항상 허용", confirmed: standby.isLiveContainer ? nil : true,
                                   confirmedText: "확인됨", unconfirmedText: "선택 안 됨")
         } else {
             Text("위치 표시를 숨기려면 위치 권한을 ‘항상 허용’으로 설정해야 합니다.")
@@ -368,15 +375,9 @@ struct AirRecordGlassView: View {
             shortcutPermissionHint
             shortcutExampleLink("AirRec(발신)", imageName: "AirRecOutgoingShortcutExample")
             Divider()
-            incomingNotificationControls
+            incomingAutomationExampleLink
             Divider()
-            Link(destination: URL(string: "https://www.icloud.com/shortcuts/17467870cbcd41c3a06912673661a8a4")!) {
-                Label("AirRec(수신) 단축어 추가", systemImage: "plus.circle")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.bordered).controlSize(.large)
-            shortcutPermissionHint
-            shortcutExampleLink("AirRec(수신)", imageName: "AirRecIncomingShortcutExample")
+            incomingNotificationControls
             Divider()
             Button { openAppSettings() } label: {
                 settingsActionLabel("AirRec 단축어 자동화 시 다이내믹 아일랜드 표시 숨기기")
@@ -412,26 +413,35 @@ struct AirRecordGlassView: View {
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
-            DisclosureGroup("AirRec(수신) 단축어 로직 설명") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("AirRec이 활성화된 상태에서 전화가 오면 통화당 한 번 알림을 보냅니다.")
-                    AirRecordInfoRow("1. 알림 자동화 만들기", value: "단축어에서 ‘알림’ 자동화를 만들고 앱을 AirRec으로 선택하세요. 제목에 ‘수신’이 포함되도록 설정하고 ‘즉시 실행’을 선택하세요.")
-                    AirRecordInfoRow("2. VPN 동작 추가하기", value: "동작으로 ‘Enable LocalDevVPN’을 추가하세요.")
-                }
-                .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
-            }
             DisclosureGroup("단축어 종류 설명") {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("AirRec 단축어는 크게 수신, 발신, 공통으로 나뉩니다.")
-                    AirRecordInfoRow("상태확인", value: "구현중...")
-                    AirRecordInfoRow("발신", value: "구현중...")
-                    AirRecordInfoRow("발신종료", value: "구현중...")
-                    AirRecordInfoRow("수신", value: "구현중...")
+                    AirRecordInfoRow("상태 확인", value: "AirRec이 통화 감시를 준비했는지 확인합니다.")
+                    AirRecordInfoRow("발신", value: "전화를 걸기 시작할 때까지 기다립니다.")
+                    AirRecordInfoRow("발신종료", value: "활성 통화가 모두 끝날 때까지 기다립니다.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
             .font(.subheadline)
         }
+    }
+
+    private var incomingAutomationExampleLink: some View {
+        NavigationLink {
+            AirRecordPage(accent: accent) {
+                AirRecordCard {
+                    AirRecordInfoRow("알림 자동화 만들기", value: "단축어에서 ‘알림’ 자동화를 만들고 AirRec 앱을 선택하세요.")
+                    Divider()
+                    AirRecordInfoRow("제목 필터 설정하기", value: "제목에 ‘수신’이 포함되도록 설정하고 ‘즉시 실행’을 선택하세요.")
+                    Divider()
+                    AirRecordInfoRow("VPN 동작 추가하기", value: "동작으로 ‘Enable LocalDevVPN’을 추가하세요.")
+                }
+            }
+            .navigationTitle("AirRec(수신) 구성 예시")
+            .navigationBarTitleDisplayMode(.inline)
+        } label: {
+            settingsActionLabel("AirRec(수신) 구성 예시", systemImage: "chevron.right", titleColor: accent)
+        }
+        .buttonStyle(.plain)
     }
 
     private var incomingNotificationControls: some View {
@@ -444,6 +454,7 @@ struct AirRecordGlassView: View {
             .disabled(standbyAlert.isRequestingPermission || standby.isLiveContainer)
             Text("전화가 오면 ‘\(AirRecordStandbyAlert.incomingNotificationTitle)’ 알림을 보냅니다. 이 알림으로 LocalDevVPN 연결을 자동화할 수 있어요.")
                 .font(.footnote).foregroundStyle(.secondary)
+            notificationPermissionStatus
             if standbyAlert.hasAlertPermission == false && !standbyAlert.canRequestPermission && !standby.isLiveContainer {
                 Button { openAppSettings() } label: {
                     Label("AirRec 설정 열기", systemImage: "arrow.up.forward.app")
@@ -477,9 +488,9 @@ struct AirRecordGlassView: View {
         .buttonStyle(.plain)
     }
 
-    private var outgoingDelayCard: some View {
+    private var callTimingCard: some View {
         AirRecordCard {
-            AirRecordHeading("발신 대기 시간 설정", systemImage: "timer", tint: accent)
+            AirRecordHeading("통화 대기 시간 설정", systemImage: "timer", tint: accent)
             Divider()
             Stepper(value: Binding(
                 get: { monitor.outgoingDelaySeconds },

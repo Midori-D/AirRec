@@ -1,13 +1,10 @@
 // Copyright 2026 AirRecord contributors. SPDX-License-Identifier: Apache-2.0
 import Foundation
 
-/// A bounded observation of a call starting or ringing.
+/// A bounded observation of an outgoing call starting.
 struct AirRecordCallWaitPolicy {
-    enum Target: Equatable { case outgoing, incomingRinging }
-
     struct Call: Equatable {
         let isOutgoing: Bool
-        let hasConnected: Bool
         let hasEnded: Bool
         let isOnHold: Bool
     }
@@ -24,19 +21,16 @@ struct AirRecordCallWaitPolicy {
 
     let startedAt: TimeInterval
     let deadline: TimeInterval
-    private let target: Target
     private var lastObservedAt: TimeInterval
     private var terminal: Result?
 
-    static func boundedTimeout(_ value: TimeInterval, target: Target = .outgoing) -> TimeInterval {
-        let maximum: TimeInterval = target == .outgoing ? 180 : 25
-        return value.isFinite ? min(maximum, max(1, value)) : defaultTimeout
+    static func boundedTimeout(_ value: TimeInterval) -> TimeInterval {
+        value.isFinite ? min(180, max(1, value)) : defaultTimeout
     }
 
-    init(startedAt: TimeInterval, timeout: TimeInterval, target: Target = .outgoing) {
+    init(startedAt: TimeInterval, timeout: TimeInterval) {
         self.startedAt = startedAt
-        self.target = target
-        deadline = startedAt + Self.boundedTimeout(timeout, target: target)
+        deadline = startedAt + Self.boundedTimeout(timeout)
         lastObservedAt = startedAt
     }
 
@@ -49,11 +43,6 @@ struct AirRecordCallWaitPolicy {
         // A late observer callback cannot turn an expired wait into success.
         guard now < deadline else { return finish(.timedOut) }
         let active = calls.filter { !$0.hasEnded }
-        if target == .incomingRinging {
-            // A ringing call can arrive during an unrelated connected call.
-            let ringing = active.contains { !$0.isOutgoing && !$0.hasConnected && !$0.isOnHold }
-            return ringing ? finish(.detected) : .waiting
-        }
         guard active.count <= 1 else { return finish(.multipleCalls) }
         guard let call = active.first else { return .waiting }
         guard !call.isOnHold else { return finish(.held) }

@@ -18,7 +18,7 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.midori.airrec':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.3.13' or str(info.get('CFBundleVersion')) != '42':
+        if info.get('CFBundleShortVersionString') != '1.4.0' or str(info.get('CFBundleVersion')) != '43':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRec' or info.get('CFBundleName') != 'AirRec':
             raise ValueError('Unexpected app display name.')
@@ -53,9 +53,9 @@ def verify(path):
             raise ValueError('Shortcut intent metadata missing.')
         actions = json.loads(archive.read(actions_path))['actions']
         expected_actions = {'WaitForAirRecordOutgoingCallIntent', 'WaitForAirRecordCallEndIntent',
-                            'CheckAirRecordStatusIntent', 'WaitForAirRecordIncomingCallIntent'}
+                            'CheckAirRecordStatusIntent'}
         if set(actions) != expected_actions:
-            raise ValueError('Expected outgoing, call-end, status, and incoming Shortcut actions.')
+            raise ValueError('Expected outgoing, call-end, and status Shortcut actions.')
         outgoing = actions['WaitForAirRecordOutgoingCallIntent']
         status = actions['CheckAirRecordStatusIntent']
         if any(status[key] != outgoing[key] for key in ('outputType', 'allowedTargets', 'supportedModes')):
@@ -64,25 +64,12 @@ def verify(path):
             raise ValueError('Status action must be a short background action without parameters.')
         if status['title']['key'] != '상태 확인':
             raise ValueError('Unexpected status action title.')
-        incoming = actions['WaitForAirRecordIncomingCallIntent']
-        if any(incoming[key] != outgoing[key] for key in ('outputType', 'allowedTargets', 'supportedModes')):
-            raise ValueError('Incoming action must return Bool in the main app in background mode.')
-        if incoming['title']['key'] != '수신' or incoming.get('systemProtocols') or incoming.get('openAppWhenRun'):
-            raise ValueError('Incoming action must be a short background action.')
-        parameters = incoming['parameters']
-        if len(parameters) != 1 or parameters[0]['name'] != 'waitSeconds':
-            raise ValueError('Incoming wait parameter missing.')
-        fields = parameters[0]['typeSpecificMetadata']
-        numeric = dict(zip(fields[::2], fields[1::2]))
-        if (numeric.get('LNValueTypeSpecificMetadataKeyDefaultValue') != {'int': {'wrapper': 20}}
-                or numeric.get('LNValueTypeMetadataKeyNumberLowerBound') != {'double': {'wrapper': 1}}
-                or numeric.get('LNValueTypeMetadataKeyNumberUpperBound') != {'double': {'wrapper': 25}}):
-            raise ValueError('Incoming wait must default to 20 seconds and accept 1–25 seconds.')
         shortcuts = archive.read(prefix+'Metadata.appintents/root.ssu.yaml')
-        if b'WaitForAirRecordIncomingCallIntent' not in shortcuts:
-            raise ValueError('Incoming App Shortcut registration is missing.')
-        if b'bundleIdentifier: com.midori.airrec' not in shortcuts or b'CheckAirRecordStatusIntent' not in shortcuts:
-            raise ValueError('Status App Shortcut registration is missing for the new bundle identifier.')
+        if b'WaitForAirRecordIncomingCallIntent' in shortcuts:
+            raise ValueError('The removed incoming App Shortcut is still registered.')
+        if b'bundleIdentifier: com.midori.airrec' not in shortcuts or any(
+                action.encode() not in shortcuts for action in expected_actions):
+            raise ValueError('Expected outgoing, call-end, and status App Shortcut registrations.')
         if any(name.endswith('embedded.mobileprovision') or '.xctest/' in name for name in names):
             raise ValueError('Profiles and XCTest plugins must not be distributed.')
         count = 0
@@ -117,7 +104,7 @@ def verify(path):
             count += 1
         if count < 1 or prefix+info['CFBundleExecutable'] not in names:
             raise ValueError('Main executable missing.')
-        print(f'PASS: AirRec 1.3.13 (42), location standby permission, AppIcon, outgoing, call-end, incoming and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
+        print(f'PASS: AirRec 1.4.0 (43), location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])
