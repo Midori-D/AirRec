@@ -6,6 +6,7 @@ import UIKit
 import UserNotifications
 
 private let statusNotificationID = "AirRecord.monitoringStatus"
+private let incomingNotificationIDPrefix = "AirRecord.incomingCall."
 
 final class AirRecordNotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
@@ -31,21 +32,26 @@ final class AirRecordNotificationDelegate: NSObject, UIApplicationDelegate, UNUs
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        guard notification.request.identifier == statusNotificationID else { return [] }
-        return [.banner, .list, .sound]
+        let identifier = notification.request.identifier
+        if identifier == statusNotificationID { return [.banner, .list, .sound] }
+        if identifier.hasPrefix(incomingNotificationIDPrefix) { return [.banner, .list] }
+        return []
     }
 }
 
 @MainActor
 final class AirRecordStandbyAlert: ObservableObject {
     static let shared = AirRecordStandbyAlert()
+    static let incomingNotificationTitle = "AirRec 수신 감지"
 
     @Published private(set) var isEnabled = UserDefaults.standard.bool(forKey: AirRecordStandbyAlert.preferenceKey)
+    @Published private(set) var isIncomingEnabled = UserDefaults.standard.bool(forKey: AirRecordStandbyAlert.incomingPreferenceKey)
     @Published private(set) var isRequestingPermission = false
     @Published private(set) var hasAlertPermission: Bool?
     @Published private(set) var canRequestPermission = false
 
     private static let preferenceKey = "AirRecord.standbyAlert.enabled"
+    private static let incomingPreferenceKey = "AirRecord.incomingAlert.enabled"
     private static let notificationID = "AirRecord.standbyAlert"
     private static let graceSeconds = 180
     private let center = UNUserNotificationCenter.current()
@@ -61,6 +67,13 @@ final class AirRecordStandbyAlert: ObservableObject {
         }
         isEnabled = enabled
         defaults.set(enabled, forKey: Self.preferenceKey)
+    }
+
+    func setIncomingEnabled(_ enabled: Bool) async {
+        guard enabled != isIncomingEnabled, !isRequestingPermission else { return }
+        if enabled, !(await requestPermission()) { return }
+        isIncomingEnabled = enabled
+        defaults.set(enabled, forKey: Self.incomingPreferenceKey)
     }
 
     func requestPermission() async -> Bool {
@@ -99,6 +112,27 @@ final class AirRecordStandbyAlert: ObservableObject {
             airRecordLog("AirRec status notification requested")
         } catch {
             airRecordLog("AirRec status notification failed: \(error.localizedDescription)")
+        }
+    }
+
+    func notifyIncomingCall(_ callID: UUID) async -> Bool {
+        let settings = await center.notificationSettings()
+        guard isIncomingEnabled, !Task.isCancelled else { return false }
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral: break
+        default: return false
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = Self.incomingNotificationTitle
+        let request = UNNotificationRequest(identifier: incomingNotificationIDPrefix + callID.uuidString,
+                                            content: content, trigger: nil)
+        do {
+            try await center.add(request)
+            return true
+        } catch {
+            airRecordLog("AirRec incoming notification failed: \(error.localizedDescription)")
+            return false
         }
     }
 

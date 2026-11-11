@@ -182,6 +182,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     private var shortcutPreparationID: UUID?
     private var nativeGeneration: UInt64?
     private var recordingResults: [UUID: AirRecordRecordingWaitPolicy.NativeResult] = [:]
+    private var notifiedIncomingCalls: Set<UUID> = []
     private var recordingWait: Task<String, Never>?
     private var recordingWaitID: UUID?
     private var recordingWaitResume: Task<Bool, Never>?
@@ -512,8 +513,12 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             failActivation(request: request, message: "설정에서 AirRec의 로컬 네트워크 접근을 허용하세요.")
             return
         case .unreachable:
-            failActivation(request: request, message: "LocalDevVPN을 연결한 뒤 다시 시작하세요.")
-            return
+            guard standbyAlert.isIncomingEnabled else {
+                failActivation(request: request, message: "LocalDevVPN을 연결한 뒤 다시 시작하세요.")
+                return
+            }
+            // The call observer can run while the notification automation prepares the tunnel.
+            recordEvent("LocalDevVPN 연결 대기 · 수신 감시 유지")
         }
 
         if standby.isEnabled {
@@ -659,6 +664,19 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         gate.update(calls)
         let active = Set(calls.filter { !$0.hasEnded }.map(\.id))
         recordingResults = recordingResults.filter { active.contains($0.key) }
+        notifiedIncomingCalls.formIntersection(active)
+        if isRunning && standbyAlert.isIncomingEnabled { notifyRingingCalls(calls) }
+    }
+
+    private func notifyRingingCalls(_ calls: [AirRecordCallState]) {
+        for call in calls where !call.isOutgoing && !call.hasConnected && !call.hasEnded && !call.isOnHold {
+            guard notifiedIncomingCalls.insert(call.id).inserted else { continue }
+            Task { [weak self] in
+                guard let self, self.isRunning, self.standbyAlert.isIncomingEnabled else { return }
+                let submitted = await self.standbyAlert.notifyIncomingCall(call.id)
+                self.recordEvent(submitted ? "수신 알림 전송 요청" : "수신 알림 전송 실패 · 알림 권한 확인")
+            }
+        }
     }
 
     private func evaluate() {
