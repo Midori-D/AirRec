@@ -5,8 +5,7 @@ import Darwin
 import Foundation
 import UIKit
 
-/// Reads the existing lock state; this never unlocks, synthesizes input, or
-/// starts XCTest. A registration/read failure is treated as locked.
+/// Reads SpringBoard's reported lock state. A failed read leaves the state unknown.
 private final class AirRecordLockState: @unchecked Sendable {
     private let token: Int32
 
@@ -16,10 +15,11 @@ private final class AirRecordLockState: @unchecked Sendable {
         token = result == 0 ? value : -1
     }
 
-    var isUnlocked: Bool {
-        guard token >= 0 else { return false }
+    var current: AirRecordDeviceLockState? {
+        guard token >= 0 else { return nil }
         var state = UInt64.max
-        return notify_get_state(token, &state) == 0 && state == 0
+        guard notify_get_state(token, &state) == 0 else { return nil }
+        return AirRecordDeviceLockState(rawValue: state)
     }
 
     deinit {
@@ -89,9 +89,8 @@ private final class AirRecordAutomationGate: @unchecked Sendable {
         let active = calls.filter { !$0.hasEnded }
         return enabled && generation == inspection.generation
             && active.count == 1 && active[0].id == inspection.callID
-            && active[0].hasConnected && !active[0].isOnHold
             && deadlines[inspection.callID].map { ProcessInfo.processInfo.systemUptime <= $0 } == true
-            && lockState.isUnlocked
+            && active[0].permitsRecording(deviceLockState: lockState.current)
     }
 
     func permits(_ inspection: Inspection) -> Bool {

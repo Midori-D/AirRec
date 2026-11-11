@@ -375,6 +375,12 @@ struct AirRecordGlassView: View {
             shortcutPermissionHint
             shortcutExampleLink("AirRec(발신)", imageName: "AirRecOutgoingShortcutExample")
             Divider()
+            Link(destination: URL(string: "https://www.icloud.com/shortcuts/17467870cbcd41c3a06912673661a8a4")!) {
+                Label("AirRec(수신) 단축어 추가", systemImage: "plus.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered).controlSize(.large)
+            shortcutPermissionHint
             incomingAutomationExampleLink
             Divider()
             incomingNotificationControls
@@ -410,6 +416,14 @@ struct AirRecordGlassView: View {
                     AirRecordInfoRow("4. AirRec이 발신을 감지합니다.", value: "발신이 감지되면 셀룰러가 꺼지고 통화 녹음이 시작됩니다. 와이파이 상태에서는 실행되지 않습니다.")
                     AirRecordInfoRow("5. AirRec이 통화 종료를 감지합니다.", value: "통화 종료 기본값은 60분입니다. 아래 시간 설정에서 변경 할 수 있습니다. 통화 종료가 감지되면 셀룰러가 켜지고 통화 녹음이 종료됩니다. 와이파이 상태에서는 실행되지 않습니다.")
                     AirRecordInfoRow("6. LocalDevVPN 연결을 해제합니다.(선택)", value: "사용자가 직접 단축어를 수정하여 LocalDevVPN 연결 해제를 추가할 수 있습니다. 단축어를 수정하지 않으면 LocalDevVPN은 계속 연결된 상태로 유지됩니다.")
+                }
+                .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
+            }
+            DisclosureGroup("AirRec(수신) 단축어 로직 설명") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("AirRec이 활성화된 상태에서 전화가 오면 통화당 한 번 알림을 보냅니다.")
+                    AirRecordInfoRow("1. 알림 자동화 만들기", value: "단축어에서 ‘알림’ 자동화를 만들고 앱을 AirRec으로 선택하세요. 제목에 ‘수신’이 포함되도록 설정하고 ‘즉시 실행’을 선택하세요.")
+                    AirRecordInfoRow("2. VPN 동작 추가하기", value: "동작으로 ‘Enable LocalDevVPN’을 추가하세요.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }

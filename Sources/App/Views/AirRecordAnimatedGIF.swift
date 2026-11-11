@@ -1,10 +1,10 @@
 // AirRecord, 2026. SPDX-License-Identifier: Apache-2.0
-#if AIRRECORD_AUTOMATION
+#if AIRRECORD_AUTOMATION // AIRRECORD_AUTOMATION 조건이 있을 경우 아래 코드를 빌드에 포함함
 import ImageIO
 import SwiftUI
 import UIKit
 
-/// Plays only the bundled image, with a still poster for Reduce Motion.
+// 세일러문 GIF, 동작 줄이기 설정 시 GIF 정지
 @MainActor
 struct AirRecordAnimatedGIF: UIViewRepresentable {
     let url: URL
@@ -24,8 +24,7 @@ struct AirRecordAnimatedGIF: UIViewRepresentable {
     }
 }
 
-/// Holds one poster while idle. All decoded animation frames belong to
-/// animationImages and are released on tab exit, scene inactivity, or detach.
+// animationImages에 프레임을 보관하여 GIF 재생, 비활성화 시 정지
 @MainActor
 final class AirRecordGIFImageView: UIImageView {
     private var resourceURL: URL?

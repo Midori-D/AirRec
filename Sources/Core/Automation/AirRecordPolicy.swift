@@ -40,12 +40,23 @@ enum AirRecordCallUI {
     }
 }
 
+enum AirRecordDeviceLockState: UInt64 {
+    case unlocked = 0
+    case locked = 1
+}
+
 struct AirRecordCallState {
     let id: UUID
     let isOutgoing: Bool
     let hasConnected: Bool
     let hasEnded: Bool
     let isOnHold: Bool
+
+    func permitsRecording(deviceLockState: AirRecordDeviceLockState?) -> Bool {
+        guard let deviceLockState, hasConnected, !hasEnded, !isOnHold else { return false }
+        // Phone exposes recording controls for an incoming call answered on the lock screen.
+        return deviceLockState == .unlocked || !isOutgoing
+    }
 }
 
 /// Pure state machine, separated from CallKit and XCTest for executable tests.

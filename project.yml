@@ -10,8 +10,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AIRRECORD_AUTOMATION"
-    MARKETING_VERSION: "1.4.0"
-    CURRENT_PROJECT_VERSION: 43
+    MARKETING_VERSION: "1.4.1"
+    CURRENT_PROJECT_VERSION: 44
 targets:
   AirRec:
     type: application
@@ -42,7 +42,7 @@ targets:
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "AirRec uses LocalDevVPN to reach this iPhone's developer service and start native call recording."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "환영합니다! AirRec은 LocalDevVPN 사용을 위해 로컬 네트워크 접근 권한과 Wi-Fi 연결이 필요합니다."
         INFOPLIST_FILE: Sources/App/Info.plist
 schemes:
   AirRec:

@@ -4,6 +4,7 @@
 
 import Foundation
 
+// AirRec의 규칙 저장소
 func check(_ condition: @autoclosure () -> Bool, _ message: String) {
     if !condition() {
         fatalError("FAILED: \(message)")
@@ -17,26 +18,48 @@ func call(_ id: UUID = firstID, connected: Bool = true, ended: Bool = false,
     AirRecordCallState(id: id, isOutgoing: outgoing, hasConnected: connected, hasEnded: ended, isOnHold: held)
 }
 
+// 통화 녹음 검사
 do {
     var policy = AirRecordPolicy()
-    check(policy.decision(calls: [], enabled: true, now: 0) == .noCall, "no call")
+    check(policy.decision(calls: [], enabled: true, now: 0) == .noCall,
+          "통화 목록이 비어 있으면 ‘통화 없음’이어야 함 (no call)")
     check(policy.decision(calls: [call(connected: false)], enabled: true, now: 0) == .connecting,
-          "ringing must not start")
+          "통화가 연결되기 전에는 연결 대기 상태여야 함 (ringing must not start)")
     check(!policy.reserveStart(for: firstID, calls: [call(connected: false)]),
-          "cannot reserve an unconnected call")
+          "연결되지 않은 통화는 녹음 시작을 예약할 수 없어야 함 (cannot reserve an unconnected call)")
     check(policy.decision(calls: [call()], enabled: true, now: 1) == .inspect(firstID),
-          "connected callback starts readiness inspection")
+          "통화가 연결되면 녹음 준비 상태를 확인해야 함 (connected callback starts readiness inspection)")
     check(policy.decision(calls: [call()], enabled: true, now: 2) == .inspect(firstID),
-          "duplicate callback remains bounded readiness inspection")
-    check(policy.reserveStart(for: firstID, calls: [call()]), "first tap reservation")
-    check(!policy.reserveStart(for: firstID, calls: [call()]), "no second reservation")
+          "같은 통화의 연결 신호가 다시 와도 기존 확인 범위 안에서 준비 상태를 확인해야 함 (duplicate callback remains bounded readiness inspection)")
+    check(policy.reserveStart(for: firstID, calls: [call()]),
+          "첫 녹음 시작 예약은 성공해야 함 (first tap reservation)")
+    check(!policy.reserveStart(for: firstID, calls: [call()]),
+          "같은 통화의 두 번째 녹음 시작 예약은 거절해야 함 (no second reservation)")
     check(policy.decision(calls: [call()], enabled: true, now: 3) == .handled(firstID),
-          "ambiguous or successful tap is never retried")
+          "녹음 시작을 한 번 예약한 통화는 다시 시도하지 않아야 함 (ambiguous or successful tap is never retried)")
     policy.resume()
     check(policy.decision(calls: [call()], enabled: true, now: 4) == .handled(firstID),
-          "resume cannot grant a second start tap")
+          "감시를 재개해도 같은 통화의 녹음 시작을 다시 시도하지 않아야 함 (resume cannot grant a second start tap)")
 }
 
+do {
+    let incoming = call()
+    let outgoing = call(outgoing: true)
+    check(incoming.permitsRecording(deviceLockState: .unlocked)
+          && outgoing.permitsRecording(deviceLockState: .unlocked),
+          "a connected call can be inspected when the device is unlocked")
+    check(incoming.permitsRecording(deviceLockState: .locked)
+          && !outgoing.permitsRecording(deviceLockState: .locked),
+          "a locked device permits inspection only for an incoming call")
+    check(!incoming.permitsRecording(deviceLockState: nil) && !outgoing.permitsRecording(deviceLockState: nil),
+          "an unknown device lock state does not permit inspection")
+    check(!call(connected: false).permitsRecording(deviceLockState: .locked)
+          && !call(held: true).permitsRecording(deviceLockState: .locked)
+          && !call(ended: true).permitsRecording(deviceLockState: .locked),
+          "locked recording requires a connected, active, unheld incoming call")
+}
+
+// 발신 통화 시 사용자가 전화를 끊을 수 있도록 기다리는 규칙... 3초 변경 가능은 outgoingDelaySeconds에
 do {
     var policy = AirRecordPolicy()
     let outgoing = call(outgoing: true)
