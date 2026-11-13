@@ -103,36 +103,55 @@ struct WaitForAirRecordCallEndIntent: LongRunningIntent, CancellableIntent {
     @MainActor
     func perform() async -> some IntentResult & ReturnsValue<Bool> {
         AirRecordShortcutPresence.shared.recordEndActionRun()
-        let seconds = AirRecordCallEndWaitPolicy.boundedTimeout(TimeInterval(waitMinutes) * 60)
+        return .result(value: await waitForCallEnd(minutes: waitMinutes, actionTitle: "발신종료"))
+    }
+}
+
+struct WaitForAirRecordIncomingCallEndIntent: LongRunningIntent, CancellableIntent {
+    static var title: LocalizedStringResource = "수신종료"
+    static var description: IntentDescription = "수신 자동화에서 사용합니다. 진행 중인 모든 통화가 끝나면 참을 반환하고, 시간 초과 또는 중단 시 거짓을 반환합니다. 통화가 없으면 즉시 참을 반환합니다. 기본 대기 시간은 60분이며 최대 180분까지 설정할 수 있습니다."
+    static var supportedModes: IntentModes { [.background] }
+    static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
+
+    @Parameter(title: "최대 대기 시간(분)", default: 60)
+    var waitMinutes: Int
+
+    @MainActor
+    func perform() async -> some IntentResult & ReturnsValue<Bool> {
+        AirRecordShortcutPresence.shared.recordIncomingEndActionRun()
+        return .result(value: await waitForCallEnd(minutes: waitMinutes, actionTitle: "수신종료"))
+    }
+}
+
+private extension LongRunningIntent where Self: CancellableIntent {
+    @MainActor
+    func waitForCallEnd(minutes: Int, actionTitle: String) async -> Bool {
+        let seconds = AirRecordCallEndWaitPolicy.boundedTimeout(TimeInterval(minutes) * 60)
         let displayProgress = progress
         displayProgress.totalUnitCount = Int64(seconds.rounded(.up))
         displayProgress.completedUnitCount = 0
-        displayProgress.localizedDescription = "발신종료 대기"
+        displayProgress.localizedDescription = "\(actionTitle) 대기"
         displayProgress.localizedAdditionalDescription = "모든 통화가 끝나면 다음 동작을 실행합니다."
-        airRecordLog("Call end wait intent: started")
+        airRecordLog("\(actionTitle) 단축어 대기 시작")
         do {
             let confirmed = try await runBackgroundWait {
                 await AirRecordCallEndWaiter.wait(timeout: seconds) { elapsed in
-                    // Progress measures elapsed observation time, not the
-                    // unknown duration or completion percentage of a call.
                     displayProgress.completedUnitCount = min(
                         displayProgress.totalUnitCount, Int64(max(0, elapsed).rounded(.down)))
                     displayProgress.localizedAdditionalDescription = "경과 \(Int(elapsed))초 · 최대 \(Int(seconds / 60))분 대기"
                 }
             }
-            displayProgress.localizedDescription = confirmed ? "발신종료 확인됨" : "발신종료 대기 중단됨"
+            displayProgress.localizedDescription = confirmed ? "\(actionTitle) 확인됨" : "\(actionTitle) 대기 중단됨"
             if confirmed { displayProgress.completedUnitCount = displayProgress.totalUnitCount }
-            airRecordLog("Call end wait intent: result=\(confirmed)")
-            return .result(value: confirmed)
+            airRecordLog("\(actionTitle) 단축어 결과: \(confirmed)")
+            return confirmed
         } catch {
-            displayProgress.localizedDescription = "발신종료 대기 중단됨"
-            airRecordLog("Call end wait intent: interrupted")
-            return .result(value: false)
+            displayProgress.localizedDescription = "\(actionTitle) 대기 중단됨"
+            airRecordLog("\(actionTitle) 단축어 대기 중단")
+            return false
         }
     }
-}
 
-private extension LongRunningIntent where Self: CancellableIntent {
     @MainActor
     func runBackgroundWait(_ wait: @escaping @MainActor @Sendable () async -> Bool) async throws -> Bool {
         let cancellation = AirRecordIntentTask()
@@ -188,6 +207,12 @@ struct AirRecordShortcuts: AppShortcutsProvider {
             intent: WaitForAirRecordCallEndIntent(),
             phrases: ["\(.applicationName) 발신종료"],
             shortTitle: "발신종료",
+            systemImageName: "phone.down"
+        )
+        AppShortcut(
+            intent: WaitForAirRecordIncomingCallEndIntent(),
+            phrases: ["\(.applicationName) 수신종료"],
+            shortTitle: "수신종료",
             systemImageName: "phone.down"
         )
         AppShortcut(

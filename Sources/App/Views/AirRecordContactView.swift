@@ -6,7 +6,6 @@ import SwiftUI
 struct AirRecordContactView: View {
     let accent: Color
     let version: String
-    let diagnosticSummary: String
     let diagnosticSnapshot: AirRecordDiagnosticSnapshot?
     let isSelected: Bool
     @Environment(\.scenePhase) private var scenePhase
@@ -60,11 +59,10 @@ struct AirRecordContactView: View {
     private var supportCard: some View {
         AirRecordCard {
             AirRecordHeading("문의 · 피드백", systemImage: "bubble.left.and.bubble.right", tint: accent)
-            Text("GitHub Issues에 버전과 겪으신 현상을 함께 적어 주세요. 도움이 필요할 때 현재 상태 기록도 공유할 수 있습니다.")
+            Text("GitHub Issues에 버전과 겪으신 현상을 함께 적어 주세요.")
                 .font(.subheadline).foregroundStyle(.secondary)
-            contactLink("문의와 제안 남기기", systemImage: "arrow.up.forward.app", destination: issuesURL)
-            ShareLink(item: diagnosticSummary) {
-                Label("현재 상태 기록 공유", systemImage: "square.and.arrow.up")
+            Link(destination: issuesURL) {
+                Label("문의와 제안 남기기", systemImage: "arrow.up.forward.app")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered).controlSize(.large)

@@ -142,6 +142,10 @@ struct AirRecordDiagnosticReport: Encodable, Identifiable {
 enum AirRecordDiagnosticUpload {
     static let endpoint = URL(string: "https://butz.bar/api/airrec/v1/diagnostics/index.php")!
 
+    static var bundledAPIKey: String {
+        Bundle.main.object(forInfoDictionaryKey: "AirRecDiagnosticAPIKey") as? String ?? ""
+    }
+
     enum UploadError: LocalizedError {
         case serverUnavailable, rateLimited, rejected, invalidReceipt, connectionFailed
         case invalidAPIKey, unauthorized

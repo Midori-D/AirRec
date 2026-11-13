@@ -47,7 +47,6 @@ struct AirRecordGlassView: View {
             Tab("문의", systemImage: "bubble.left.and.bubble.right", value: AirRecordTab.contact) {
                 NavigationStack {
                     AirRecordContactView(accent: accent, version: version,
-                                         diagnosticSummary: monitor.diagnosticSummary,
                                          diagnosticSnapshot: monitor.latestDiagnosticSnapshot,
                                          isSelected: selectedTab == .contact)
                 }
@@ -102,7 +101,7 @@ struct AirRecordGlassView: View {
             AirRecordShortcutStatusView(accent: accent, kind: .end)
             AirRecordShortcutStatusView(accent: accent, kind: .incoming,
                                         incomingNotificationAt: standbyAlert.lastIncomingNotificationAt)
-            AirRecordPlannedFeatureView(title: "AirRec 수신종료 자동화", systemImage: "phone.down.fill", accent: accent)
+            AirRecordShortcutStatusView(accent: accent, kind: .incomingEnd)
             AirRecordPlannedFeatureView(title: "AirRec 메모 이름 수정", systemImage: "note.text", accent: accent)
             AirRecordPlannedFeatureView(title: "AirBeep (통화 녹음 고지 제거)", systemImage: "speaker.slash", accent: accent)
             AirRecordPlannedFeatureView(title: "AirBeep2 (통화 녹음 카운트다운 제거)", systemImage: "timer", accent: accent)
@@ -203,6 +202,7 @@ struct AirRecordGlassView: View {
             preparationCard
             backgroundCard
             shortcutCard
+            incomingCallDisplayCard
             callTimingCard
             AirRecordVersionLabel(version: version)
                 .font(.footnote)
@@ -433,10 +433,22 @@ struct AirRecordGlassView: View {
                     AirRecordInfoRow("상태 확인", value: "AirRec이 통화 감시를 준비했는지 확인합니다.")
                     AirRecordInfoRow("발신", value: "전화를 걸기 시작할 때까지 기다립니다.")
                     AirRecordInfoRow("발신종료", value: "활성 통화가 모두 끝날 때까지 기다립니다.")
+                    AirRecordInfoRow("수신종료", value: "수신 자동화에서 활성 통화가 모두 끝날 때까지 기다립니다.")
                 }
                 .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
             }
             .font(.subheadline)
+        }
+    }
+
+    private var incomingCallDisplayCard: some View {
+        AirRecordCard {
+            AirRecordHeading("착신 통화 화면", systemImage: "phone.arrow.down.left", tint: accent)
+            Divider()
+            Text("설정 → 앱 → 전화 → 착신 통화 → 전체 화면")
+                .font(.subheadline.weight(.semibold))
+            Text("아이폰 사용 중 전화를 받을 때 기본 통화 화면이 열리도록 설정해 주세요. 배너로 받으면 AirRec이 녹음 버튼을 찾지 못할 수 있습니다.")
+                .font(.footnote).foregroundStyle(.secondary)
         }
     }
 

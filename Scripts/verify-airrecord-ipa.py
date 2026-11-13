@@ -18,7 +18,7 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.midori.airrec':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.4.3' or str(info.get('CFBundleVersion')) != '46':
+        if info.get('CFBundleShortVersionString') != '1.4.4' or str(info.get('CFBundleVersion')) != '47':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRec' or info.get('CFBundleName') != 'AirRec':
             raise ValueError('Unexpected app display name.')
@@ -55,10 +55,17 @@ def verify(path):
             raise ValueError('Shortcut intent metadata missing.')
         actions = json.loads(archive.read(actions_path))['actions']
         expected_actions = {'WaitForAirRecordOutgoingCallIntent', 'WaitForAirRecordCallEndIntent',
-                            'CheckAirRecordStatusIntent'}
+                            'WaitForAirRecordIncomingCallEndIntent', 'CheckAirRecordStatusIntent'}
         if set(actions) != expected_actions:
-            raise ValueError('Expected outgoing, call-end, and status Shortcut actions.')
+            raise ValueError('Expected outgoing, outgoing end, incoming end, and status Shortcut actions.')
         outgoing = actions['WaitForAirRecordOutgoingCallIntent']
+        outgoing_end = actions['WaitForAirRecordCallEndIntent']
+        incoming_end = actions['WaitForAirRecordIncomingCallEndIntent']
+        if outgoing_end['title']['key'] != '발신종료' or incoming_end['title']['key'] != '수신종료':
+            raise ValueError('Unexpected call-end action titles.')
+        if any(incoming_end[key] != outgoing_end[key] for key in (
+                'outputType', 'allowedTargets', 'supportedModes', 'systemProtocols', 'parameters')):
+            raise ValueError('Incoming call-end action must match the existing call-end behavior.')
         status = actions['CheckAirRecordStatusIntent']
         if any(status[key] != outgoing[key] for key in ('outputType', 'allowedTargets', 'supportedModes')):
             raise ValueError('Status action must return Bool in the main app in background mode.')
@@ -71,7 +78,7 @@ def verify(path):
             raise ValueError('The removed incoming App Shortcut is still registered.')
         if b'bundleIdentifier: com.midori.airrec' not in shortcuts or any(
                 action.encode() not in shortcuts for action in expected_actions):
-            raise ValueError('Expected outgoing, call-end, and status App Shortcut registrations.')
+            raise ValueError('Expected outgoing, outgoing end, incoming end, and status App Shortcut registrations.')
         if any(name.endswith('embedded.mobileprovision') or '.xctest/' in name for name in names):
             raise ValueError('Profiles and XCTest plugins must not be distributed.')
         count = 0
@@ -112,7 +119,7 @@ def verify(path):
         for marker in ('더 보기 버튼 확인', '통화 녹음 버튼 입력 수락', 'consents_to_ip_collection'):
             if marker.encode() not in executable:
                 raise ValueError('Call button diagnostics or IP consent is missing from the app binary.')
-        print(f'PASS: AirRec 1.4.3 (46), button diagnostics, IP consent, diagnostic API, Files access, location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
+        print(f'PASS: AirRec 1.4.4 (47), button diagnostics, IP consent, diagnostic API, Files access, location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])

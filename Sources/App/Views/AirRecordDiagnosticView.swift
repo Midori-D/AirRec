@@ -10,7 +10,7 @@ struct AirRecordDiagnosticView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var worksWell: Bool?
     @State private var includeIPAddress = false
-    @State private var apiKey = ""
+    @State private var apiKey = AirRecordDiagnosticUpload.bundledAPIKey
     @State private var hasAttemptedSend = false
     @State private var isSending = false
     @State private var wasSent = false
