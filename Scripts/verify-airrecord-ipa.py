@@ -63,9 +63,22 @@ def verify(path):
         incoming_end = actions['WaitForAirRecordIncomingCallEndIntent']
         if outgoing_end['title']['key'] != '발신종료' or incoming_end['title']['key'] != '수신종료':
             raise ValueError('Unexpected call-end action titles.')
-        if any(incoming_end[key] != outgoing_end[key] for key in (
-                'outputType', 'allowedTargets', 'supportedModes', 'systemProtocols', 'parameters')):
-            raise ValueError('Incoming call-end action must match the existing call-end behavior.')
+        required_protocols = {'Cancellable', 'LongRunning', 'ProgressReporting'}
+        for action in (outgoing_end, incoming_end):
+            if any(action[key] != outgoing[key] for key in ('outputType', 'allowedTargets', 'supportedModes')):
+                raise ValueError('Call-end actions must return Bool in the main app in background mode.')
+            protocols = {name.rsplit('.', 1)[-1] for name in action.get('systemProtocols', [])}
+            if not required_protocols.issubset(protocols):
+                raise ValueError('Call-end actions must provide cancellable, long-running progress.')
+            parameters = action.get('parameters', [])
+            if len(parameters) != 1 or parameters[0].get('name') != 'waitMinutes':
+                raise ValueError('Expected one call-end waitMinutes parameter.')
+            parameter = parameters[0]
+            metadata = parameter.get('typeSpecificMetadata', [])
+            defaults = dict(zip(metadata[::2], metadata[1::2]))
+            if (parameter.get('title', {}).get('key') != '최대 대기 시간(분)' or
+                    defaults.get('LNValueTypeSpecificMetadataKeyDefaultValue') != {'int': {'wrapper': 60}}):
+                raise ValueError('Expected a call-end wait time in minutes with a 60-minute default.')
         status = actions['CheckAirRecordStatusIntent']
         if any(status[key] != outgoing[key] for key in ('outputType', 'allowedTargets', 'supportedModes')):
             raise ValueError('Status action must return Bool in the main app in background mode.')
