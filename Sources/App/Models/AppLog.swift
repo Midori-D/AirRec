@@ -1,70 +1,118 @@
 import Foundation
 import UIKit
 
-/// File logging for the host app, one file per process.
-///
-/// Written because the interesting failures here happen on a device with no
-/// debugger attached — a DDI mount that aborts inside a Rust FFI leaves nothing
-/// behind but a crash report, and `print` goes nowhere once the app ships. One
-/// file per PID keeps a crash-and-relaunch cycle from overwriting the very run
-/// that failed, which is the one worth reading.
+/// Keeps one append-only file per launch so a new process cannot overwrite earlier runs.
 final class AppLog {
     static let shared = AppLog()
 
-    /// Serial: several threads log (the mount runs on its own), and interleaved
-    /// partial writes would corrupt exactly the file being relied on.
+    private static let monitorPrefix = " AirRec: "
+    private static let legacyArchiveKey = "AirRecord.activity.legacyArchiveComplete"
     private let queue = DispatchQueue(label: "com.airrecord.applog")
     private let handle: FileHandle?
-    private let formatter: DateFormatter
-
-    let fileURL: URL?
-
-    static var directory: URL? {
-        guard let base = FileManager.default.urls(for: .libraryDirectory,
-                                                  in: .userDomainMask).first else { return nil }
-        let dir = base.appendingPathComponent("Logs/AirRecord", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
+    private let formatter = DateFormatter()
 
     private init() {
-        formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss.SSS"
-
-        let pid = ProcessInfo.processInfo.processIdentifier
-        let stamp = ISO8601DateFormatter()
-        stamp.formatOptions = [.withYear, .withMonth, .withDay, .withTime]
-        let name = "airrecord-app-\(Self.launchStamp())-pid\(pid).log"
-
-        guard let dir = Self.directory else {
-            fileURL = nil
+        guard let directory = Self.logDirectory else {
             handle = nil
             return
         }
-        let url = dir.appendingPathComponent(name)
-        FileManager.default.createFile(atPath: url.path, contents: nil)
-        fileURL = url
-        handle = try? FileHandle(forWritingTo: url)
 
-        Self.pruneOldFiles()
+        Self.archiveLegacyMonitorEvents(in: directory)
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.dateFormat = "yyyyMMdd-HHmmss"
+        let suffix = UUID().uuidString
+        let fileName = "AirRec-\(stamp.string(from: Date()))-\(suffix).log"
+        let url = directory.appendingPathComponent(fileName)
+        do {
+            try Data().write(to: url, options: [.withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication])
+            handle = try FileHandle(forWritingTo: url)
+        } catch {
+            handle = nil
+            NSLog("AirRec log file unavailable: %@", (error as NSError).domain)
+        }
         write(header())
     }
 
-    private static func launchStamp() -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd-HHmmss"
-        return f.string(from: Date())
+    private static var logDirectory: URL? {
+        let files = FileManager.default
+        guard let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        let directory = documents.appendingPathComponent("Logs", isDirectory: true)
+        do {
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+            return directory
+        } catch {
+            NSLog("AirRec log directory unavailable: %@", (error as NSError).domain)
+            return nil
+        }
+    }
+
+    private static var legacyFiles: [URL] {
+        let files = FileManager.default
+        guard let library = files.urls(for: .libraryDirectory, in: .userDomainMask).first else { return [] }
+        let directory = library.appendingPathComponent("Logs/AirRecord", isDirectory: true)
+        let urls = (try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        return urls.filter { $0.pathExtension == "log" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    private static func legacyMonitorLines(in file: URL) -> [String] {
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return [] }
+        return text.split(whereSeparator: \.isNewline).compactMap { line in
+            guard line.hasPrefix("["), let closingBracket = line.firstIndex(of: "]") else { return nil }
+            let message = line[line.index(after: closingBracket)...]
+            guard message.hasPrefix(monitorPrefix) else { return nil }
+            return String(line)
+        }
+    }
+
+    static func legacyRecentMonitorEvents(limit: Int) -> [String] {
+        var recent: [String] = []
+        for file in legacyFiles.reversed() {
+            let remaining = limit - recent.count
+            guard remaining > 0 else { break }
+            let lines = legacyMonitorLines(in: file)
+            recent.append(contentsOf: lines.suffix(remaining).reversed().map {
+                $0.replacingOccurrences(of: monitorPrefix, with: " ")
+            })
+        }
+        return Array(recent.reversed())
+    }
+
+    private static func archiveLegacyMonitorEvents(in directory: URL) {
+        let files = FileManager.default
+        guard !UserDefaults.standard.bool(forKey: legacyArchiveKey) else { return }
+        let sources = legacyFiles
+        guard !sources.isEmpty else { return }
+        let archive = directory.appendingPathComponent("Previous Runs", isDirectory: true)
+        do {
+            try files.createDirectory(at: archive, withIntermediateDirectories: true)
+            for source in sources {
+                let target = archive.appendingPathComponent(source.lastPathComponent)
+                guard !files.fileExists(atPath: target.path) else { continue }
+                // Older technical logs include raw network details. Only copy
+                // the monitor history; the original files remain in Library.
+                let lines = legacyMonitorLines(in: source)
+                guard !lines.isEmpty else { continue }
+                let data = Data((lines.joined(separator: "\n") + "\n").utf8)
+                try data.write(to: target, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            }
+            UserDefaults.standard.set(true, forKey: legacyArchiveKey)
+        } catch {
+            NSLog("AirRec legacy log archive incomplete: %@", (error as NSError).domain)
+        }
     }
 
     private func header() -> String {
-        let d = UIDevice.current
+        let device = UIDevice.current
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
         return """
         ── AirRec app log ─────────────────────────────
         started : \(Date())
-        pid     : \(ProcessInfo.processInfo.processIdentifier)
-        device  : \(DeviceInfo.modelIdentifier) · \(d.systemName) \(d.systemVersion)
-        app     : \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") \
-        (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"))
+        device  : \(DeviceInfo.modelIdentifier) · \(device.systemName) \(device.systemVersion)
+        app     : \(version) (\(build))
         ──────────────────────────────────────────────
         """
     }
@@ -79,39 +127,15 @@ final class AppLog {
 
     private func write(_ text: String) {
         guard let handle else { return }
+        let data = Data((text + "\n").utf8)
         queue.async {
-            if let data = (text + "\n").data(using: .utf8) {
-                try? handle.write(contentsOf: data)
+            do {
+                try handle.write(contentsOf: data)
+            } catch {
+                NSLog("AirRec log write failed: %@", (error as NSError).domain)
             }
         }
     }
-
-    /// Every log on disk, newest first.
-    static func allFiles() -> [URL] {
-        guard let dir = directory,
-              let urls = try? FileManager.default.contentsOfDirectory(
-                  at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return [] }
-        return urls.filter { $0.pathExtension == "log" }.sorted {
-            let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return a > b
-        }
-    }
-
-    /// Keep the last 20 runs. A per-PID file means one crash loop could
-    /// otherwise fill the container with hundreds of near-empty logs.
-    private static func pruneOldFiles(keeping limit: Int = 20) {
-        let files = allFiles()
-        guard files.count > limit else { return }
-        for url in files.dropFirst(limit) {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-
-    static func removeAll() {
-        for url in allFiles() { try? FileManager.default.removeItem(at: url) }
-    }
 }
 
-/// Shorthand, so logging a line stays cheap enough to actually do.
 func airRecordLog(_ message: String) { AppLog.shared.log(message) }

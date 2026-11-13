@@ -85,12 +85,15 @@ enum LocalDevVPN {
                 }
             }
         }
-        airRecordLog("Tunnel probe \(DDIMounter.tunnelAddress):\(DDIMounter.tunnelPort) → \(result); interfaces: \(interfaceSummary())")
+        switch result {
+        case .reachable: airRecordLog("Tunnel probe: reachable")
+        case .localNetworkDenied: airRecordLog("Tunnel probe: Local Network denied")
+        case .unreachable: airRecordLog("Tunnel probe: unreachable")
+        }
         return result
     }
 
-    /// Every IPv4 address on an up interface, as "name address" — for the log
-    /// and the screen when the tunnel can't be found.
+    /// Every IPv4 address on an up interface for the on-screen tunnel diagnostics.
     static func interfaceSummary() -> String {
         var head: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&head) == 0, let first = head else { return "unavailable" }

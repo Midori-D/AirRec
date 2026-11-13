@@ -90,17 +90,29 @@ enum PairingFileStore {
     /// state can refresh.
     static let didImport = Notification.Name("PairingFileStore.didImport")
 
-    /// Store a file shared to the app ("Open in AirRecord"). iOS hands over a copy
-    /// in an inbox folder of ours (Documents/Inbox, or tmp/<bundle id>-Inbox
-    /// on newer systems), which is removed afterwards whatever the outcome.
+    /// Copy the shared file into private storage. Clean up copies in AirRec's
+    /// own inbox while preserving originals opened in place from Files.
     static func importShared(from url: URL) throws {
         defer {
-            if url.deletingLastPathComponent().lastPathComponent.hasSuffix("Inbox") {
+            if isImportInbox(url.deletingLastPathComponent()) {
                 try? FileManager.default.removeItem(at: url)
             }
         }
         try importFile(from: url)
         NotificationCenter.default.post(name: didImport, object: nil)
+    }
+
+    private static func isImportInbox(_ directory: URL) -> Bool {
+        let files = FileManager.default
+        let parent = directory.standardizedFileURL.resolvingSymlinksInPath()
+        if let documents = files.urls(for: .documentDirectory, in: .userDomainMask).first,
+           parent == documents.appendingPathComponent("Inbox", isDirectory: true)
+            .standardizedFileURL.resolvingSymlinksInPath() {
+            return true
+        }
+        guard let bundleID = Bundle.main.bundleIdentifier else { return false }
+        let temporaryInbox = files.temporaryDirectory.appendingPathComponent(bundleID + "-Inbox", isDirectory: true)
+        return parent == temporaryInbox.standardizedFileURL.resolvingSymlinksInPath()
     }
 
     static func remove() {

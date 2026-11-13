@@ -57,7 +57,10 @@ final class NetworkPermission: ObservableObject {
         var req = URLRequest(url: DeveloperDiskImageStore.Component.buildManifest.remoteURL, timeoutInterval: 10)
         req.httpMethod = "HEAD"
         URLSession.shared.dataTask(with: req) { _, resp, err in
-            airRecordLog("Network probe: \((resp as? HTTPURLResponse)?.statusCode.description ?? err?.localizedDescription ?? "no answer")")
+            let status = (resp as? HTTPURLResponse)?.statusCode.description
+            let failure = err.map { $0 as NSError }
+            let result = status ?? failure.map { "\($0.domain) \($0.code)" } ?? "no answer"
+            airRecordLog("Network probe: \(result)")
         }.resume()
     }
 

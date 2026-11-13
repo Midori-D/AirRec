@@ -30,10 +30,11 @@ struct AirRecordApp: App {
                     let name = url.lastPathComponent
                     do {
                         try PairingFileStore.importShared(from: url)
-                        airRecordLog("Pairing file received via share: \(name)")
+                        airRecordLog("Pairing file received via share")
                         sharedPairing = SharedPairingResult(fileName: name, error: nil)
                     } catch {
-                        airRecordLog("Shared file \(name) rejected: \(error.localizedDescription)")
+                        let failure = error as NSError
+                        airRecordLog("Shared pairing file rejected: \(failure.domain) \(failure.code)")
                         sharedPairing = SharedPairingResult(fileName: name, error: error.localizedDescription)
                     }
                 }

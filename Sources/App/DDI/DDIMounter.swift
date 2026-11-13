@@ -66,8 +66,11 @@ final class DDIMounter: ObservableObject {
         didSet {
             // Progress ticks would flood the file; every other transition is
             // exactly the breadcrumb trail a failed mount needs.
-            if case .uploading = phase { return }
-            airRecordLog("DDI phase → \(phase)")
+            switch phase {
+            case .uploading: return
+            case .failed: airRecordLog("DDI phase → failed")
+            default: airRecordLog("DDI phase → \(phase)")
+            }
         }
     }
 
@@ -128,7 +131,8 @@ final class DDIMounter: ObservableObject {
 
             phase = .mounted
         } catch {
-            airRecordLog("❌ DDI mount failed: \(error.localizedDescription)")
+            let failure = error as NSError
+            airRecordLog("DDI mount failed: \(failure.domain) \(failure.code)")
             phase = .failed(error.localizedDescription)
         }
     }
@@ -239,7 +243,7 @@ final class DDIMounter: ObservableObject {
                                                  method: DeveloperDiskImageStore.MountMethod,
                                                  imageDir: String,
                                                  report: @escaping (Phase) -> Void) throws {
-        airRecordLog("DDI mount starting — \(method.rawValue) image from \(imageDir)")
+        airRecordLog("DDI mount starting — \(method.rawValue) image")
         primeCryptoProvider()
 
         var pairing: OpaquePointer?
@@ -384,7 +388,7 @@ final class DDIMounter: ObservableObject {
         let message = err.pointee.message.map { String(cString: $0) } ?? "code \(err.pointee.code)"
         let code = err.pointee.code
         idevice_error_free(err)
-        airRecordLog("❌ \(operation): \(message) (code \(code))")
+        airRecordLog("\(operation) failed (code \(code))")
         // "ImageMountFailed" is the device's own word for it and says nothing
         // about why, so attach what it usually means rather than passing a bare
         // string to someone with no way to look it up.

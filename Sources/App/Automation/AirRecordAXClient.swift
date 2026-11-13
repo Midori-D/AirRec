@@ -5,13 +5,14 @@ import Foundation
 import IDevice
 
 enum AirRecordAXOutcome {
-    case waiting(String)
+    case waiting(String, stage: AirRecordDiagnosticAttempt.Stage)
     case openedMore
     case startSubmitted
     case alreadyRecording
     case recordingConfirmed
 }
 private struct AirRecordAXError: LocalizedError {
+    let stage: AirRecordDiagnosticAttempt.Stage
     let message: String
     var errorDescription: String? { message }
 }
@@ -40,22 +41,22 @@ enum AirRecordAXClient {
                               shouldContinue: @escaping () -> Bool,
                               reserveMore: @escaping () -> Bool,
                               reserveStart: @escaping () -> Bool) throws -> AirRecordAXOutcome {
-        guard shouldContinue() else { return .waiting("통화 상태 재확인") }
+        guard shouldContinue() else { return .waiting("통화 상태 재확인", stage: .callState) }
         DDIMounter.primeCryptoProvider()
         var pairing: OpaquePointer?
-        try check("페어링 파일 읽기") { rp_pairing_file_read(pairingPath, &pairing) }
+        try check("페어링 파일 읽기", stage: .pairing) { rp_pairing_file_read(pairingPath, &pairing) }
         defer { if let pairing { rp_pairing_file_free(pairing) } }
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = UInt16(49152).bigEndian
         guard "10.7.0.1".withCString({ inet_pton(AF_INET, $0, &address.sin_addr) }) == 1 else {
-            throw AirRecordAXError(message: "LocalDevVPN 주소를 확인할 수 없습니다.")
+            throw AirRecordAXError(stage: .developerConnection, message: "LocalDevVPN 주소를 확인할 수 없습니다.")
         }
         var adapter: OpaquePointer?
         var handshake: OpaquePointer?
         try withUnsafePointer(to: &address) { pointer in
             try pointer.withMemoryRebound(to: idevice_sockaddr.self, capacity: 1) { socket in
-                try check("기기 개발자 연결") {
+                try check("기기 개발자 연결", stage: .developerConnection) {
                     tunnel_create_rppairing(socket, idevice_socklen_t(MemoryLayout<sockaddr_in>.size),
                                             "AirRecord AX", pairing, nil, nil, &adapter, &handshake)
                 }
@@ -66,18 +67,18 @@ enum AirRecordAXClient {
             if let adapter { adapter_free(adapter) }
         }
         guard let adapter, let handshake else {
-            throw AirRecordAXError(message: "개발자 연결 핸들을 만들지 못했습니다.")
+            throw AirRecordAXError(stage: .developerConnection, message: "개발자 연결 핸들을 만들지 못했습니다.")
         }
         let callbacks = AirRecordAXCallbacks(shouldContinue, reserveMore, reserveStart)
         var outcome: UInt32 = 0
         try withExtendedLifetime(callbacks) {
-            try check("통화 화면 접근성 검사") {
+            try check("통화 화면 접근성 검사", stage: .callScreen) {
                 calltap_ax_inspect(adapter, handshake, mayOpenMore, callback,
                                    Unmanaged.passUnretained(callbacks).toOpaque(), &outcome)
             }
         }
         switch outcome {
-        case 0: return .waiting("잠금 해제 및 기본 통화 화면 열기 필요")
+        case 0: return .waiting("잠금 해제 및 기본 통화 화면 열기 필요", stage: .callScreen)
         case 1: return .openedMore
         case 2: return .startSubmitted
         case 3: return .alreadyRecording
@@ -97,16 +98,26 @@ enum AirRecordAXClient {
             case 17: detail = "통화·잠금·준비 시간 재확인"
             default: detail = "통화 화면 변경 · 재확인"
             }
-            return .waiting((afterMore ? "더 보기 · " : "") + detail)
-        default: throw AirRecordAXError(message: "알 수 없는 접근성 검사 결과입니다.")
+            let stage: AirRecordDiagnosticAttempt.Stage
+            switch reason {
+            case 17: stage = .callState
+            case 18: stage = .callScreen
+            default: stage = afterMore ? .recordButton : .callScreen
+            }
+            return .waiting((afterMore ? "더 보기 · " : "") + detail, stage: stage)
+        default: throw AirRecordAXError(stage: .callScreen, message: "알 수 없는 접근성 검사 결과입니다.")
         }
+    }
+
+    static func failureStage(for error: Error) -> AirRecordDiagnosticAttempt.Stage {
+        (error as? AirRecordAXError)?.stage ?? .callScreen
     }
 
     static func diagnostic(for error: Error) -> String? {
         // This type is created only from fixed local labels or our Rust errors.
         (error as? AirRecordAXError)?.message
     }
-    private static func check(_ operation: String,
+    private static func check(_ operation: String, stage: AirRecordDiagnosticAttempt.Stage,
                               _ call: () -> UnsafeMutablePointer<IdeviceFfiError>?) throws {
         guard let error = call() else { return }
         let code = error.pointee.code
@@ -114,9 +125,9 @@ enum AirRecordAXClient {
         idevice_error_free(error)
         // Only our fixed protocol labels may reach app status; never remote UI text.
         if let range = raw.range(of: "CallTap AX:") {
-            throw AirRecordAXError(message: String(raw[range.lowerBound...].prefix(180)))
+            throw AirRecordAXError(stage: stage, message: String(raw[range.lowerBound...].prefix(180)))
         }
-        throw AirRecordAXError(message: "\(operation) 실패 (코드 \(code)). LocalDevVPN·개발자 디스크 확인 필요")
+        throw AirRecordAXError(stage: stage, message: "\(operation) 실패 (코드 \(code)). LocalDevVPN·개발자 디스크 확인 필요")
     }
 }
 #endif

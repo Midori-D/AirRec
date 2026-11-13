@@ -48,6 +48,7 @@ struct AirRecordGlassView: View {
                 NavigationStack {
                     AirRecordContactView(accent: accent, version: version,
                                          diagnosticSummary: monitor.diagnosticSummary,
+                                         diagnosticSnapshot: monitor.latestDiagnosticSnapshot,
                                          isSelected: selectedTab == .contact)
                 }
             }
@@ -580,11 +581,8 @@ struct AirRecordGlassView: View {
                         if entry.offset != 0 { Divider() }
                     }
                 }
-                Button("모든 기록 초기화", systemImage: "trash", role: .destructive) {
-                    monitor.clearRecentEvents()
-                }
-                .buttonStyle(.bordered)
-                .disabled(monitor.recentEvents.isEmpty)
+                Text("최신 10건을 표시합니다.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             AirRecordCard {
                 DisclosureGroup("상태 정보 자세히 보기") {
@@ -592,6 +590,9 @@ struct AirRecordGlassView: View {
                         .font(.caption.monospaced()).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 8)
+                    Text("전체 기록은 파일 앱의 ‘나의 iPhone → AirRec → Logs’에 .log 파일로 누적됩니다.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .padding(.top, 4)
                 }
                 .font(.subheadline.weight(.semibold))
                 ShareLink(item: monitor.diagnosticSummary) {

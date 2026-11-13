@@ -211,7 +211,8 @@ final class DeveloperDiskImageStore: ObservableObject {
                 throw error
             } catch {
                 lastError = error
-                airRecordLog("⚠️ \(component.rawValue) download interrupted at \(data.count)B (attempt \(attempt)): \(error.localizedDescription)")
+                let failure = error as NSError
+                airRecordLog("\(component.rawValue) download interrupted at \(data.count)B (attempt \(attempt)): \(failure.domain) \(failure.code)")
                 statusMessage = String(format: L10n.t(.ddiRetryingDownload), component.rawValue,
                                        String(attempt), String(Self.downloadAttempts - 1))
             }
