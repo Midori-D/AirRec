@@ -4,7 +4,8 @@ use crate::{IdeviceFfiError,ffi_err,run_sync_local,core_device_proxy::AdapterHan
 use idevice::IdeviceError;
 
 /// Current-call/lock checks and one-shot action reservations. Actions: 0 check,
-/// 1 reserve More, 2 reserve recording start. Called on the invoking worker.
+/// 1 reserve More, 2 reserve recording start. Codes 1000–1003 report AX
+/// observations only, and their return values are ignored. Called on the invoking worker.
 pub type CallTapAXGuard = Option<unsafe extern "C" fn(*mut c_void,u32)->bool>;
 
 /// Inspects native call UI; may open More once and then submit recording start

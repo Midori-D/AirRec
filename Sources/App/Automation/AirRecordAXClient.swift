@@ -11,6 +11,22 @@ enum AirRecordAXOutcome {
     case alreadyRecording
     case recordingConfirmed
 }
+enum AirRecordAXMilestone: UInt32, Sendable {
+    case moreFound = 1000
+    case moreAccepted = 1001
+    case recordFound = 1002
+    case recordAccepted = 1003
+
+    var logMessage: String {
+        switch self {
+        case .moreFound: return "더 보기 버튼 확인"
+        case .moreAccepted: return "더 보기 버튼 입력 수락"
+        case .recordFound: return "통화 녹음 버튼 확인"
+        case .recordAccepted: return "통화 녹음 버튼 입력 수락"
+        }
+    }
+}
+
 private struct AirRecordAXError: LocalizedError {
     let stage: AirRecordDiagnosticAttempt.Stage
     let message: String
@@ -20,9 +36,14 @@ private final class AirRecordAXCallbacks {
     let permitted: () -> Bool
     let more: () -> Bool
     let start: () -> Bool
+    let observe: (AirRecordAXMilestone) -> Void
+
     init(_ permitted: @escaping () -> Bool, _ more: @escaping () -> Bool,
-         _ start: @escaping () -> Bool) {
-        self.permitted = permitted; self.more = more; self.start = start
+         _ start: @escaping () -> Bool, observe: @escaping (AirRecordAXMilestone) -> Void) {
+        self.permitted = permitted
+        self.more = more
+        self.start = start
+        self.observe = observe
     }
 }
 enum AirRecordAXClient {
@@ -33,14 +54,18 @@ enum AirRecordAXClient {
         case 0: return callbacks.permitted()
         case 1: return callbacks.permitted() && callbacks.more()
         case 2: return callbacks.permitted() && callbacks.start()
-        default: return false
+        default:
+            guard let milestone = AirRecordAXMilestone(rawValue: action) else { return false }
+            callbacks.observe(milestone)
+            return true
         }
     }
     /// Handles remain on the invoking dedicated worker for their entire lifetime.
     static func inspectAndAct(pairingPath: String, mayOpenMore: Bool,
                               shouldContinue: @escaping () -> Bool,
                               reserveMore: @escaping () -> Bool,
-                              reserveStart: @escaping () -> Bool) throws -> AirRecordAXOutcome {
+                              reserveStart: @escaping () -> Bool,
+                              observe: @escaping (AirRecordAXMilestone) -> Void) throws -> AirRecordAXOutcome {
         guard shouldContinue() else { return .waiting("통화 상태 재확인", stage: .callState) }
         DDIMounter.primeCryptoProvider()
         var pairing: OpaquePointer?
@@ -69,7 +94,7 @@ enum AirRecordAXClient {
         guard let adapter, let handshake else {
             throw AirRecordAXError(stage: .developerConnection, message: "개발자 연결 핸들을 만들지 못했습니다.")
         }
-        let callbacks = AirRecordAXCallbacks(shouldContinue, reserveMore, reserveStart)
+        let callbacks = AirRecordAXCallbacks(shouldContinue, reserveMore, reserveStart, observe: observe)
         var outcome: UInt32 = 0
         try withExtendedLifetime(callbacks) {
             try check("통화 화면 접근성 검사", stage: .callScreen) {
@@ -83,7 +108,7 @@ enum AirRecordAXClient {
         case 2: return .startSubmitted
         case 3: return .alreadyRecording
         case 4: return .recordingConfirmed
-        case 10...18, 110...118:
+        case 10...21, 110...118:
             let afterMore = outcome >= 100
             let reason = afterMore ? outcome - 100 : outcome
             let detail: String
@@ -96,7 +121,10 @@ enum AirRecordAXClient {
             case 15: detail = "녹음 버튼 위치 불일치 · 입력 보류"
             case 16: detail = "녹음 상태 미확인 · 입력 보류"
             case 17: detail = "통화·잠금·준비 시간 재확인"
-            default: detail = "통화 화면 변경 · 재확인"
+            case 18: detail = "통화 화면 변경 · 재확인"
+            case 19: detail = "기본 통화 화면의 조작 버튼 확인 대기"
+            case 20: detail = "더 보기 버튼 표시 대기"
+            default: detail = "더 보기 버튼 후보가 여러 개 · 입력 보류"
             }
             let stage: AirRecordDiagnosticAttempt.Stage
             switch reason {

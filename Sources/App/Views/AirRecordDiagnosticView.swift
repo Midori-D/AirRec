@@ -9,6 +9,7 @@ struct AirRecordDiagnosticView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var worksWell: Bool?
+    @State private var includeIPAddress = false
     @State private var apiKey = ""
     @State private var hasAttemptedSend = false
     @State private var isSending = false
@@ -52,6 +53,13 @@ struct AirRecordDiagnosticView: View {
                     }
                     .accessibilityElement(children: .contain)
                     .disabled(hasAttemptedSend)
+                }
+                AirRecordCard {
+                    Toggle("접속 IP 주소 저장에 동의", isOn: $includeIPAddress)
+                        .font(.headline)
+                        .disabled(hasAttemptedSend)
+                    Text("동의하면 진단 서버가 요청을 받은 시점의 접속 IP 주소를 보고서와 함께 저장합니다. 같은 네트워크에서 접수된 보고서를 비교하는 데 사용합니다.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 AirRecordCard {
                     if wasSent {
@@ -119,7 +127,8 @@ struct AirRecordDiagnosticView: View {
         guard let worksWell, !isSending, !wasSent else { return }
         var submission = report
         submission.worksWell = worksWell
-        // A retry must send the same answer with the same report ID.
+        submission.consentsToIPCollection = includeIPAddress ? true : nil
+        // Keep the same payload and report ID on retry.
         hasAttemptedSend = true
         isSending = true
         errorMessage = nil

@@ -195,6 +195,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     private var nativeGeneration: UInt64?
     private var recordingResults: [UUID: AirRecordRecordingWaitPolicy.NativeResult] = [:]
     private var notifiedIncomingCalls: Set<UUID> = []
+    private var loggedAXMilestones: [UUID: Set<AirRecordAXMilestone>] = [:]
     private var recordingWait: Task<String, Never>?
     private var recordingWaitID: UUID?
     private var recordingWaitResume: Task<Bool, Never>?
@@ -686,6 +687,7 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         let active = Set(calls.filter { !$0.hasEnded }.map(\.id))
         recordingResults = recordingResults.filter { active.contains($0.key) }
         notifiedIncomingCalls.formIntersection(active)
+        loggedAXMilestones = loggedAXMilestones.filter { active.contains($0.key) }
         if isRunning && standbyAlert.isIncomingEnabled { notifyRingingCalls(calls) }
     }
 
@@ -764,17 +766,21 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         // thread avoids the small Swift concurrency worker stack used by FFI.
         let thread = Thread { [weak self] in
             let result: Result<AirRecordAXOutcome, Error>
+            var milestones: [AirRecordAXMilestone] = []
             do {
                 result = .success(try AirRecordAXClient.inspectAndAct(
                     pairingPath: pairingPath, mayOpenMore: inspection.mayOpenMore,
                     shouldContinue: { gate.permits(inspection) },
                     reserveMore: { gate.reserveMore(inspection) },
-                    reserveStart: { gate.reserveStart(inspection) }))
+                    reserveStart: { gate.reserveStart(inspection) },
+                    observe: { milestone in
+                        if !milestones.contains(milestone) { milestones.append(milestone) }
+                    }))
             } catch {
                 result = .failure(error)
             }
-            Task { @MainActor in
-                self?.didInspect(result, inspection: inspection)
+            Task { @MainActor [milestones] in
+                self?.didInspect(result, inspection: inspection, milestones: milestones)
             }
         }
         thread.name = "airrecord.ax.inspect"
@@ -784,11 +790,17 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     }
 
     private func didInspect(_ result: Result<AirRecordAXOutcome, Error>,
-                            inspection: AirRecordAutomationGate.Inspection) {
+                            inspection: AirRecordAutomationGate.Inspection,
+                            milestones: [AirRecordAXMilestone]) {
         workerIsRunning = false
         guard gate.isCurrent(inspection), isRunning else {
             if isRunning { evaluate() }
             return
+        }
+        for milestone in milestones {
+            if loggedAXMilestones[inspection.callID, default: []].insert(milestone).inserted {
+                recordEvent(milestone.logMessage)
+            }
         }
         switch result {
         case .success(.waiting(let detail, let stage)):

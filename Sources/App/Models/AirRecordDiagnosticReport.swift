@@ -112,6 +112,7 @@ struct AirRecordDiagnosticReport: Encodable, Identifiable {
     let appBuild: String
     let lastAttempt: AirRecordDiagnosticAttempt?
     var worksWell: Bool?
+    var consentsToIPCollection: Bool?
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
@@ -122,6 +123,7 @@ struct AirRecordDiagnosticReport: Encodable, Identifiable {
         case appBuild = "app_build"
         case lastAttempt = "last_attempt"
         case worksWell = "works_well"
+        case consentsToIPCollection = "consents_to_ip_collection"
     }
 
     var id: UUID { reportID }

@@ -278,6 +278,15 @@ const WAIT_HIT: u32 = 15;
 const WAIT_VALUE: u32 = 16;
 const WAIT_GATE: u32 = 17;
 const WAIT_ROOT: u32 = 18;
+const WAIT_CALL_CONTROLS: u32 = 19;
+const WAIT_MORE_MISSING: u32 = 20;
+const WAIT_MORE_AMBIGUOUS: u32 = 21;
+
+// Observations use the existing callback and never authorize input.
+const TRACE_MORE_FOUND: u32 = 1000;
+const TRACE_MORE_ACCEPTED: u32 = 1001;
+const TRACE_RECORD_FOUND: u32 = 1002;
+const TRACE_RECORD_ACCEPTED: u32 = 1003;
 
 enum Candidate { Missing, Ambiguous, One(Node) }
 fn candidate(nodes:&[Node],predicate:fn(&str)->bool)->Result<Candidate,IdeviceError> {
@@ -303,14 +312,16 @@ async fn inspect_step(ax:&mut Ax,pid:u64,root:&Token,may_open_more:bool,
         Candidate::One(target)=>(target,true),
         Candidate::Ambiguous=>return Ok(InspectionStep::Waiting(WAIT_AMBIGUOUS)),
         Candidate::Missing=>{
-            if !may_open_more||!call_controls(&initial){return Ok(InspectionStep::Waiting(WAIT_MISSING));}
+            if !may_open_more {return Ok(InspectionStep::Waiting(WAIT_MISSING));}
+            if !call_controls(&initial) {return Ok(InspectionStep::Waiting(WAIT_CALL_CONTROLS));}
             match candidate(&initial,more)? {
                 Candidate::One(target)=>(target,false),
-                Candidate::Missing=>return Ok(InspectionStep::Waiting(WAIT_MISSING)),
-                Candidate::Ambiguous=>return Ok(InspectionStep::Waiting(WAIT_AMBIGUOUS)),
+                Candidate::Missing=>return Ok(InspectionStep::Waiting(WAIT_MORE_MISSING)),
+                Candidate::Ambiguous=>return Ok(InspectionStep::Waiting(WAIT_MORE_AMBIGUOUS)),
             }
         }
     };
+    let _ = guard(if is_start { TRACE_RECORD_FOUND } else { TRACE_MORE_FOUND });
     // A menu item can already be in AX while its UIKit transition is still
     // running. Require observations separated in time, even when the caller
     // starts with an already-open menu from an earlier inspection.
@@ -322,8 +333,8 @@ async fn inspect_step(ax:&mut Ax,pid:u64,root:&Token,may_open_more:bool,
     if recording(&current){return Ok(InspectionStep::AlreadyRecording);}
     let confirmed=match candidate(&current,if is_start {start}else{more})? {
         Candidate::One(node)=>node,
-        Candidate::Missing=>return Ok(InspectionStep::Waiting(WAIT_MISSING)),
-        Candidate::Ambiguous=>return Ok(InspectionStep::Waiting(WAIT_AMBIGUOUS)),
+        Candidate::Missing=>return Ok(InspectionStep::Waiting(if is_start {WAIT_MISSING} else {WAIT_MORE_MISSING})),
+        Candidate::Ambiguous=>return Ok(InspectionStep::Waiting(if is_start {WAIT_AMBIGUOUS} else {WAIT_MORE_AMBIGUOUS})),
     };
     if key(&confirmed.token)?!=key(&target.token)? {return Ok(InspectionStep::Waiting(WAIT_IDENTITY));}
     if is_start {
@@ -354,6 +365,7 @@ async fn inspect_step(ax:&mut Ax,pid:u64,root:&Token,may_open_more:bool,
     if is_start { *start_reserved=true; }
     let accepted=ax.read(7,None,Some(&confirmed.token),5).await?;
     if !yes(Some(&accepted)){return Err(err("native press refused; action remains spent"));}
+    let _ = guard(if is_start { TRACE_RECORD_ACCEPTED } else { TRACE_MORE_ACCEPTED });
     Ok(if is_start {InspectionStep::StartSubmitted}else{InspectionStep::MoreSubmitted})
 }
 
@@ -458,7 +470,7 @@ impl<G:Fn(u32)->bool> MenuSession for NativeMenuSession<'_,G> {
 }
 
 // Outcomes: 2 start ACKed but unconfirmed, 3 already recording, 4 observed
-// recording after our single start, 10..18 fixed wait reason,
+// recording after our single start, 10..21 fixed wait reason,
 // 110..118 More accepted followed by bounded waiting. guard(1/2) reserves each
 // action BEFORE wire dispatch. An ambiguous start is never replayed.
 pub async fn inspect(provider:&mut impl RsdProvider,hs:&mut RsdHandshake,may_open_more:bool,guard:impl Fn(u32)->bool)->Result<u32,IdeviceError> {

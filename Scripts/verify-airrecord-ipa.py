@@ -18,7 +18,7 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.midori.airrec':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.4.2' or str(info.get('CFBundleVersion')) != '45':
+        if info.get('CFBundleShortVersionString') != '1.4.3' or str(info.get('CFBundleVersion')) != '46':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRec' or info.get('CFBundleName') != 'AirRec':
             raise ValueError('Unexpected app display name.')
@@ -109,7 +109,10 @@ def verify(path):
         executable = archive.read(prefix + info['CFBundleExecutable'])
         if b'https://butz.bar/api/airrec/v1/diagnostics/index.php' not in executable:
             raise ValueError('Diagnostic API endpoint missing from app binary.')
-        print(f'PASS: AirRec 1.4.2 (45), diagnostic API, Files access, location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
+        for marker in ('더 보기 버튼 확인', '통화 녹음 버튼 입력 수락', 'consents_to_ip_collection'):
+            if marker.encode() not in executable:
+                raise ValueError('Call button diagnostics or IP consent is missing from the app binary.')
+        print(f'PASS: AirRec 1.4.3 (46), button diagnostics, IP consent, diagnostic API, Files access, location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])
