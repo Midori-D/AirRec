@@ -224,12 +224,53 @@ fn nodes(snapshot:&Value,root:&Token)->Result<Vec<Node>,IdeviceError> {
     Ok(output)
 }
 fn norm(label:&str)->String {label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()}
-fn start(label:&str)->bool{matches!(norm(label).as_str(),"통화 녹음"|"통화녹음"|"통화 녹음 시작"|"녹음 시작"|"call recording"|"record call"|"start call recording"|"start recording")}
+fn recording_subtitle(text: &str) -> bool {
+    matches!(text, "녹음 및 전사" | "전사 및 요약")
+}
+fn start(label: &str) -> bool {
+    let label = norm(label);
+    if matches!(label.as_str(), "통화 녹음" | "통화녹음" | "통화 녹음 시작" | "녹음 시작"
+        | "call recording" | "record call" | "start call recording" | "start recording") {
+        return true;
+    }
+    // Some Phone layouts expose the menu item's title and subtitle together.
+    label.strip_prefix("통화 녹음").is_some_and(|subtitle| {
+        recording_subtitle(subtitle.trim().trim_start_matches(['-', '–', '—', ',', ':']).trim())
+    })
+}
 fn more(label:&str)->bool{matches!(norm(label).as_str(),"더 보기"|"더보기"|"more"|"more options")}
-fn stop(label:&str)->bool{matches!(norm(label).as_str(),"통화 녹음 중지"|"통화 녹음 종료"|"통화 녹음 중단"|"녹음 중지"|"녹음 종료"|"녹음 중단"|"녹음 중"|"통화 녹음 중"|"stop recording"|"stop call recording"|"end recording"|"recording"|"recording in progress")}
-fn inactive(value:Option<&Value>)->bool {match value {None=>true,Some(Value::String(s))=>matches!(s.trim().to_lowercase().as_str(),""|"0"|"off"|"$null"),Some(Value::Boolean(false))=>true,Some(v)=>number(v)==Some(0)}}
-fn active(value:Option<&Value>)->bool {match value {Some(Value::Boolean(true))=>true,Some(Value::String(s))=>matches!(norm(s).as_str(),"1"|"on"|"selected"|"recording"|"녹음 중"|"켜짐"|"선택됨"),Some(v)=>number(v)==Some(1),None=>false}}
-fn recording(nodes:&[Node])->bool {nodes.iter().any(|n|n.visible&&(stop(&n.label)||(start(&n.label)&&((n.traits&TRAIT_SELECTED)!=0||active(n.value.as_ref())))))}
+fn stop(label:&str)->bool{matches!(norm(label).as_str(),"통화 녹음 중지"|"통화 녹음 종료"|"통화 녹음 중단"|"녹음 중지"|"녹음 종료"|"녹음 중단"|"녹음 중"|"통화 녹음 중"|"stop recording"|"stop call recording"|"end recording"|"recording in progress")}
+fn inactive(value: Option<&Value>) -> bool {
+    match value {
+        None | Some(Value::Boolean(false)) => true,
+        Some(Value::String(value)) => {
+            let value = norm(value);
+            matches!(value.as_str(), "" | "0" | "off" | "$null") || recording_subtitle(&value)
+        }
+        Some(value) => number(value) == Some(0),
+    }
+}
+fn selected_value(value: Option<&Value>) -> bool {
+    yes(value) || matches!(value, Some(Value::String(value))
+        if matches!(norm(value).as_str(), "1" | "on" | "selected" | "켜짐" | "선택됨"))
+}
+fn recording_value(value: Option<&Value>) -> bool {
+    matches!(value, Some(Value::String(value))
+        if matches!(norm(value).as_str(), "recording" | "recording in progress" | "녹음 중" | "통화 녹음 중"))
+}
+fn recording(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| node.visible && (
+        stop(&node.label) || (recording_value(node.value.as_ref()) && start(&node.label))
+    ))
+}
+fn record_button_can_start(snapshot: &Node, live: &Dictionary) -> bool {
+    // AX selection can describe menu focus. Treat it as ambiguous, while
+    // continuing to avoid an action that might stop an existing recording.
+    snapshot.traits & TRAIT_SELECTED == 0
+        && !selected_value(snapshot.value.as_ref())
+        && !yes(live.get("30"))
+        && inactive(live.get("53"))
+}
 #[derive(Clone,Copy)]
 enum HitEvidence { SameElement, DifferentElement, Unavailable8 }
 impl HitEvidence {
@@ -303,23 +344,53 @@ fn candidate(nodes:&[Node],predicate:fn(&str)->bool)->Result<Candidate,IdeviceEr
 
 enum InspectionStep { Waiting(u32), MoreSubmitted, StartSubmitted, AlreadyRecording }
 
+enum InspectionTarget {
+    More(Node),
+    Record(Node),
+    Waiting(u32),
+}
+
+fn record_control_visible(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| node.visible && start(&node.label))
+}
+
+fn inspection_target(nodes: &[Node], may_open_more: bool) -> Result<InspectionTarget, IdeviceError> {
+    let wait_reason = if !may_open_more {
+        WAIT_MISSING
+    } else {
+        let more_button = candidate(nodes, more)?;
+        if !call_controls(nodes) {
+            WAIT_CALL_CONTROLS
+        } else {
+            match more_button {
+                // AX snapshots can include the controls behind an open menu.
+                // Pressing More again could close that menu.
+                Candidate::One(target) if !record_control_visible(nodes) => {
+                    return Ok(InspectionTarget::More(target));
+                }
+                Candidate::One(_) => WAIT_MISSING,
+                Candidate::Missing => WAIT_MORE_MISSING,
+                Candidate::Ambiguous => WAIT_MORE_AMBIGUOUS,
+            }
+        }
+    };
+
+    Ok(match candidate(nodes, start)? {
+        Candidate::One(target) => InspectionTarget::Record(target),
+        Candidate::Missing => InspectionTarget::Waiting(wait_reason),
+        Candidate::Ambiguous => InspectionTarget::Waiting(WAIT_AMBIGUOUS),
+    })
+}
+
 async fn inspect_step(ax:&mut Ax,pid:u64,root:&Token,may_open_more:bool,
                       guard:&impl Fn(u32)->bool,start_reserved:&mut bool)->Result<InspectionStep,IdeviceError> {
     if !guard(0){return Ok(InspectionStep::Waiting(WAIT_GATE));}
     let snapshot=ax.snapshot(root).await?;let initial=nodes(&snapshot,root)?;
     if recording(&initial){return Ok(InspectionStep::AlreadyRecording);}
-    let (target,is_start)=match candidate(&initial,start)? {
-        Candidate::One(target)=>(target,true),
-        Candidate::Ambiguous=>return Ok(InspectionStep::Waiting(WAIT_AMBIGUOUS)),
-        Candidate::Missing=>{
-            if !may_open_more {return Ok(InspectionStep::Waiting(WAIT_MISSING));}
-            if !call_controls(&initial) {return Ok(InspectionStep::Waiting(WAIT_CALL_CONTROLS));}
-            match candidate(&initial,more)? {
-                Candidate::One(target)=>(target,false),
-                Candidate::Missing=>return Ok(InspectionStep::Waiting(WAIT_MORE_MISSING)),
-                Candidate::Ambiguous=>return Ok(InspectionStep::Waiting(WAIT_MORE_AMBIGUOUS)),
-            }
-        }
+    let (target,is_start)=match inspection_target(&initial,may_open_more)? {
+        InspectionTarget::More(target)=>(target,false),
+        InspectionTarget::Record(target)=>(target,true),
+        InspectionTarget::Waiting(reason)=>return Ok(InspectionStep::Waiting(reason)),
     };
     let _ = guard(if is_start { TRACE_RECORD_FOUND } else { TRACE_MORE_FOUND });
     // A menu item can already be in AX while its UIKit transition is still
@@ -331,6 +402,10 @@ async fn inspect_step(ax:&mut Ax,pid:u64,root:&Token,may_open_more:bool,
     }
     let fresh=ax.snapshot(root).await?;let current=nodes(&fresh,root)?;
     if recording(&current){return Ok(InspectionStep::AlreadyRecording);}
+    if !is_start {
+        if record_control_visible(&current) {return Ok(InspectionStep::Waiting(WAIT_IDENTITY));}
+        if !call_controls(&current) {return Ok(InspectionStep::Waiting(WAIT_CALL_CONTROLS));}
+    }
     let confirmed=match candidate(&current,if is_start {start}else{more})? {
         Candidate::One(node)=>node,
         Candidate::Missing=>return Ok(InspectionStep::Waiting(if is_start {WAIT_MISSING} else {WAIT_MORE_MISSING})),
@@ -344,8 +419,8 @@ async fn inspect_step(ax:&mut Ax,pid:u64,root:&Token,may_open_more:bool,
     let state=ax.read(5,Some(map(vec![("attributes",Value::Array([21u64,27,30,32,53].into_iter().map(|n|Value::Integer(n.into())).collect()))])),Some(&confirmed.token),0).await?;
     let live=dict(&state)?;
     if !yes(live.get("27"))||!yes(live.get("32")) {return Ok(InspectionStep::Waiting(WAIT_DISABLED));}
-    if is_start && (yes(live.get("30"))||active(live.get("53"))) {return Ok(InspectionStep::AlreadyRecording);}
-    if is_start && !inactive(live.get("53")) {return Ok(InspectionStep::Waiting(WAIT_VALUE));}
+    if is_start && recording_value(live.get("53")) {return Ok(InspectionStep::AlreadyRecording);}
+    if is_start && !record_button_can_start(&confirmed, live) {return Ok(InspectionStep::Waiting(WAIT_VALUE));}
     let Some(frame)=confirmed.frame else {return Ok(InspectionStep::Waiting(WAIT_FRAME));};
     let Some(live_frame)=live.get("21").and_then(Rect::parse) else {return Ok(InspectionStep::Waiting(WAIT_FRAME));};
     if !frame.same(live_frame){return Ok(InspectionStep::Waiting(WAIT_FRAME));}
@@ -491,11 +566,75 @@ mod tests {
     use super::*;
     fn token(pid:u64,id:u64)->Token{map(vec![("pid",Value::Integer(pid.into())),("objectID",Value::Integer(id.into()))])}
     fn node(id:u64,visible:bool)->Node{Node{token:token(42,id),label:"통화 녹음".into(),visible,value:None,traits:1,frame:None}}
+    #[test]
+    fn closed_call_screen_targets_more_until_the_record_item_is_visible() {
+        let mut controls: Vec<_> = ["더 보기", "소리 끔", "스피커", "키패드"]
+            .into_iter().enumerate().map(|(index, label)| Node {
+                label: label.into(),
+                ..node(index as u64 + 2, true)
+            }).collect();
+        controls.push(node(1, false));
+        assert!(matches!(inspection_target(&controls, true).unwrap(), InspectionTarget::More(_)));
+        assert!(matches!(inspection_target(&controls, false).unwrap(), InspectionTarget::Waiting(WAIT_MISSING)));
+        controls.last_mut().unwrap().visible = true;
+        assert!(matches!(inspection_target(&controls, true).unwrap(), InspectionTarget::Record(_)));
+        assert!(matches!(inspection_target(&controls, false).unwrap(), InspectionTarget::Record(_)));
+    }
+
+    #[test]
+    fn direct_record_and_ambiguous_menu_items_keep_their_existing_behavior() {
+        assert!(matches!(inspection_target(&[node(1, true)], true).unwrap(), InspectionTarget::Record(_)));
+        assert!(matches!(
+            inspection_target(&[node(1, true), node(2, true)], true).unwrap(),
+            InspectionTarget::Waiting(WAIT_AMBIGUOUS)
+        ));
+    }
     #[test] fn visible_parent_excludes_hidden_label(){let chosen=unique(&[node(1,true),node(2,false)],start).unwrap().unwrap();assert_eq!(key(&chosen.token).unwrap(),(42,1));}
     #[test] fn distinct_visible_candidates_are_ambiguous(){assert!(unique(&[node(1,true),node(2,true)],start).unwrap().is_none());}
     #[test] fn repeated_native_handle_is_one_target(){assert!(unique(&[node(1,true),node(1,true)],start).unwrap().is_some());}
     #[test] fn request_roundtrip_preserves_large_token(){let t=token(42,u64::MAX-1);let encoded=request(1,Some(map(vec![("pid",Value::Integer(42.into()))])),Some(&t),0).unwrap();let decoded=decode(&encoded).unwrap();assert_eq!(key(field(&decoded,"translation").unwrap()).unwrap(),(42,u64::MAX-1));}
-    #[test] fn selected_recording_is_never_a_start(){let mut n=node(1,true);n.traits|=TRAIT_SELECTED;assert!(recording(&[n]));}
+    #[test]
+    fn korean_recording_subtitles_preserve_the_start_action() {
+        for (label, subtitle) in [
+            ("통화 녹음 - 녹음 및 전사", "녹음 및 전사"),
+            ("통화 녹음, 전사 및 요약", "전사 및 요약"),
+            ("통화 녹음\n전사 및 요약", "전사 및 요약"),
+        ] {
+            let mut button = node(1, true);
+            button.label = label.into();
+            button.value = Some(Value::String(subtitle.into()));
+            let live = [("53".into(), Value::String(subtitle.into()))].into_iter().collect();
+            assert!(start(&button.label));
+            assert!(record_button_can_start(&button, &live));
+            assert!(!recording(&[button]));
+        }
+        assert!(!start("전사 및 요약"));
+        assert!(!start("통화 녹음 - 알 수 없는 항목"));
+        assert!(!start("통화 녹음 중지 - 전사 및 요약"));
+    }
+    #[test]
+    fn selection_is_ambiguous_until_the_recording_state_is_observed() {
+        let mut button = node(1, true);
+        button.traits |= TRAIT_SELECTED;
+        assert!(!record_button_can_start(&button, &Dictionary::new()));
+        assert!(!recording(&[button.clone()]));
+        button.traits &= !TRAIT_SELECTED;
+        for value in [Value::Boolean(true), Value::String("selected".into())] {
+            button.value = Some(value);
+            assert!(!record_button_can_start(&button, &Dictionary::new()));
+            assert!(!recording(&[button.clone()]));
+        }
+        button.value = None;
+        for field in ["30", "53"] {
+            let live = [(field.into(), Value::Boolean(true))].into_iter().collect();
+            assert!(!record_button_can_start(&button, &live));
+        }
+        button.value = Some(Value::String("녹음 중".into()));
+        assert!(recording(&[button]));
+        let mut stop_button = node(2, true);
+        stop_button.label = "통화 녹음 중지".into();
+        assert!(recording(&[stop_button]));
+    }
     #[test] fn image_trait_does_not_mean_selected(){let mut n=node(1,true);n.traits|=4;assert!(!recording(&[n]));}
     #[test] fn proximity_error8_allows_known_button_traits(){assert!(HitEvidence::Unavailable8.permits(8589934593));assert!(HitEvidence::Unavailable8.permits(8589934657));}
     #[test] fn error8_does_not_allow_a_text_or_unknown_target(){assert!(!HitEvidence::Unavailable8.permits(64));assert!(!HitEvidence::Unavailable8.permits(0));}

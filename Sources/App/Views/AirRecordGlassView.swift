@@ -47,7 +47,6 @@ struct AirRecordGlassView: View {
             Tab("문의", systemImage: "bubble.left.and.bubble.right", value: AirRecordTab.contact) {
                 NavigationStack {
                     AirRecordContactView(accent: accent, version: version,
-                                         diagnosticSnapshot: monitor.latestDiagnosticSnapshot,
                                          isSelected: selectedTab == .contact)
                 }
             }

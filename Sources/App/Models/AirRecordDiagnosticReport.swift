@@ -18,110 +18,74 @@ struct AirRecordDiagnosticDevice: Codable, Equatable {
     }
 }
 
-struct AirRecordDiagnosticAttempt: Codable, Equatable {
-    enum Direction: String, Codable {
-        case incoming, outgoing
+@MainActor
+enum AirRecordDiagnosticHistory {
+    static let recordingConfirmation = "통화 녹음 시작 확인"
 
-        var title: String { self == .incoming ? "수신" : "발신" }
-    }
+    private static let confirmedKey = "AirRecord.diagnostics.recordingEverConfirmed"
+    private static let legacySnapshotKey = "AirRecord.diagnostics.latestAttempt"
+    private static let legacyRecentEventsKey = "AirRecord.activity.recentEvents"
 
-    enum LockState: String, Codable {
-        case locked, unlocked, unknown
-
-        init(_ state: AirRecordDeviceLockState?) {
-            switch state {
-            case .locked: self = .locked
-            case .unlocked: self = .unlocked
-            case nil: self = .unknown
-            }
-        }
-
-        var title: String {
-            switch self {
-            case .locked: return "잠김"
-            case .unlocked: return "잠금 해제"
-            case .unknown: return "확인 불가"
-            }
+    static func recordConfirmation(defaults: UserDefaults = .standard) {
+        if !defaults.bool(forKey: confirmedKey) {
+            defaults.set(true, forKey: confirmedKey)
         }
     }
 
-    enum Stage: String, Codable {
-        case callState = "call_state"
-        case pairing
-        case developerConnection = "developer_connection"
-        case callScreen = "call_screen"
-        case recordButton = "record_button"
-        case recording
+    static func hasRecordingConfirmation(defaults: UserDefaults = .standard) async -> Bool {
+        if let confirmed = defaults.object(forKey: confirmedKey) as? Bool { return confirmed }
+        let event = recordingConfirmation
+        let recent = defaults.stringArray(forKey: legacyRecentEventsKey) ?? []
+        let legacySnapshot = defaults.data(forKey: legacySnapshotKey)
+        if recent.contains(where: { $0.hasSuffix("] " + event) }) ||
+            legacySnapshot.flatMap({ try? JSONDecoder().decode(LegacySnapshot.self, from: $0) })?.attempt.result == "confirmed" {
+            recordConfirmation(defaults: defaults)
+            return true
+        }
 
-        var title: String {
-            switch self {
-            case .callState: return "통화 및 잠금 상태 확인"
-            case .pairing: return "페어링 파일 확인"
-            case .developerConnection: return "기기 개발자 연결"
-            case .callScreen: return "통화 화면 확인"
-            case .recordButton: return "통화 녹음 버튼 확인"
-            case .recording: return "녹음 시작"
+        let archived = await Task.detached(priority: .utility) {
+            AppLog.hasMonitorEvent(event)
+        }.value
+        // A new confirmation may arrive while the older files are being read.
+        let confirmed = archived || defaults.bool(forKey: confirmedKey)
+        defaults.set(confirmed, forKey: confirmedKey)
+        return confirmed
+    }
+
+    private struct LegacySnapshot: Decodable {
+        let attempt: Attempt
+
+        struct Attempt: Decodable {
+            let result: String
+
+            enum CodingKeys: String, CodingKey {
+                case result = "result_code"
             }
         }
     }
-
-    enum Result: String, Codable {
-        case waiting, blocked, failed
-        case timedOut = "timed_out"
-        case submittedUnconfirmed = "submitted_unconfirmed"
-        case confirmed
-        case alreadyRecording = "already_recording"
-
-        var title: String {
-            switch self {
-            case .waiting: return "대기 중 마지막 확인"
-            case .blocked: return "검사 조건 미충족"
-            case .failed: return "실패"
-            case .timedOut: return "준비 시간 초과"
-            case .submittedUnconfirmed: return "녹음 요청 후 시작 미확인"
-            case .confirmed: return "녹음 시작 확인"
-            case .alreadyRecording: return "이미 녹음 중"
-            }
-        }
-    }
-
-    let callDirection: Direction
-    let lockState: LockState
-    let stage: Stage
-    let resultCode: Result
-
-    enum CodingKeys: String, CodingKey {
-        case callDirection = "call_direction"
-        case lockState = "lock_state"
-        case stage
-        case resultCode = "result_code"
-    }
-}
-
-struct AirRecordDiagnosticSnapshot: Codable, Equatable {
-    let device: AirRecordDiagnosticDevice
-    let attempt: AirRecordDiagnosticAttempt
 }
 
 struct AirRecordDiagnosticReport: Encodable, Identifiable {
     let schemaVersion = 1
     let reportID = UUID()
+    let installationID: UUID
     let modelIdentifier: String
     let iosVersion: String
     let appVersion: String
     let appBuild: String
-    let lastAttempt: AirRecordDiagnosticAttempt?
+    let recordingEverConfirmed: Bool
     var worksWell: Bool?
     var consentsToIPCollection: Bool?
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case reportID = "report_uuid"
+        case installationID = "installation_id"
         case modelIdentifier = "model_identifier"
         case iosVersion = "ios_version"
         case appVersion = "app_version"
         case appBuild = "app_build"
-        case lastAttempt = "last_attempt"
+        case recordingEverConfirmed = "recording_ever_confirmed"
         case worksWell = "works_well"
         case consentsToIPCollection = "consents_to_ip_collection"
     }
@@ -129,13 +93,20 @@ struct AirRecordDiagnosticReport: Encodable, Identifiable {
     var id: UUID { reportID }
 
     @MainActor
-    init(snapshot: AirRecordDiagnosticSnapshot?) {
-        let device = snapshot?.device ?? .current
+    init(recordingEverConfirmed: Bool, defaults: UserDefaults = .standard) {
+        let installationKey = "AirRecord.diagnostics.installationID"
+        if let saved = defaults.string(forKey: installationKey), let id = UUID(uuidString: saved) {
+            installationID = id
+        } else {
+            installationID = UUID()
+            defaults.set(installationID.uuidString, forKey: installationKey)
+        }
+        self.recordingEverConfirmed = recordingEverConfirmed
+        let device = AirRecordDiagnosticDevice.current
         modelIdentifier = device.modelIdentifier
         iosVersion = device.iosVersion
         appVersion = device.appVersion
         appBuild = device.appBuild
-        lastAttempt = snapshot?.attempt
     }
 }
 

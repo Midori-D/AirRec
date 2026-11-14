@@ -6,10 +6,10 @@ import SwiftUI
 struct AirRecordContactView: View {
     let accent: Color
     let version: String
-    let diagnosticSnapshot: AirRecordDiagnosticSnapshot?
     let isSelected: Bool
     @Environment(\.scenePhase) private var scenePhase
     @State private var report: AirRecordDiagnosticReport?
+    @State private var preparingReport = false
 
     private let projectURL = URL(string: "https://github.com/Midori-D/AirRec")!
     private let issuesURL = URL(string: "https://github.com/Midori-D/AirRec/issues")!
@@ -67,13 +67,22 @@ struct AirRecordContactView: View {
             }
             .buttonStyle(.bordered).controlSize(.large)
             Button {
-                report = AirRecordDiagnosticReport(snapshot: diagnosticSnapshot)
+                Task { await prepareReport() }
             } label: {
                 Label("진단 보내기", systemImage: "paperplane")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered).controlSize(.large)
+            .disabled(preparingReport)
         }
+    }
+
+    private func prepareReport() async {
+        guard !preparingReport else { return }
+        preparingReport = true
+        defer { preparingReport = false }
+        let confirmed = await AirRecordDiagnosticHistory.hasRecordingConfirmation()
+        report = AirRecordDiagnosticReport(recordingEverConfirmed: confirmed)
     }
 
     private func contactLink(_ title: String, systemImage: String, destination: URL) -> some View {

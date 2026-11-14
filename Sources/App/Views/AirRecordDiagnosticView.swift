@@ -21,7 +21,7 @@ struct AirRecordDiagnosticView: View {
             AirRecordPage(accent: accent) {
                 AirRecordCard {
                     AirRecordHeading("수집 목적", systemImage: "stethoscope", tint: accent)
-                    Text("기종과 iOS 버전에 따라 자동 녹음이 어느 단계에서 멈추는지 확인하는 데 사용합니다.")
+                    Text("기종과 iOS 버전에 따른 AirRec 동작을 확인하는 데 사용합니다.")
                         .font(.subheadline)
                     AirRecordInfoRow("수집 장소", value: AirRecordDiagnosticUpload.endpoint.absoluteString)
                         .textSelection(.enabled)
@@ -31,17 +31,12 @@ struct AirRecordDiagnosticView: View {
                     AirRecordInfoRow("기종 식별자", value: report.modelIdentifier)
                     AirRecordInfoRow("iOS 버전", value: report.iosVersion)
                     AirRecordInfoRow("AirRec 버전과 빌드", value: "\(report.appVersion) (\(report.appBuild))")
-                    if let attempt = report.lastAttempt {
-                        Divider()
-                        AirRecordInfoRow("통화 방향과 검사 당시 잠금 상태",
-                                         value: "\(attempt.callDirection.title) · \(attempt.lockState.title)")
-                        AirRecordInfoRow("마지막 단계와 결과",
-                                         value: "\(attempt.stage.title) · \(attempt.resultCode.title)")
-                    }
+                    AirRecordInfoRow("자동 녹음 시작 확인 이력",
+                                     value: report.recordingEverConfirmed ? "O · 확인 기록 있음" : "X · 확인 기록 없음")
                     Divider()
-                    AirRecordInfoRow("보고서 번호", value: report.reportID.uuidString)
+                    AirRecordInfoRow("보고서 번호", value: report.installationID.uuidString)
                         .textSelection(.enabled)
-                    Text("보고서 번호는 재전송 시 중복 접수를 막는 데 사용합니다. 전송 형식 버전도 함께 보냅니다.")
+                    Text("보고서 번호는 앱 데이터가 유지되는 동안 같습니다. 중복 전송 방지용 접수 번호와 전송 형식 버전도 보냅니다.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 AirRecordCard {

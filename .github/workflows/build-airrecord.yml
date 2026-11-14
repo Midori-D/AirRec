@@ -1,4 +1,5 @@
 name: Build AirRec
+run-name: Build AirRec - 1.4.5
 on:
   workflow_dispatch:
 permissions:

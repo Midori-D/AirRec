@@ -79,6 +79,23 @@ final class AppLog {
         return Array(recent.reversed())
     }
 
+    static func hasMonitorEvent(_ event: String) -> Bool {
+        let fileManager = FileManager.default
+        var logs = legacyFiles
+        if let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let directory = documents.appendingPathComponent("Logs", isDirectory: true)
+            for folder in [directory, directory.appendingPathComponent("Previous Runs", isDirectory: true)] {
+                let files = (try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+                logs.append(contentsOf: files.filter { $0.pathExtension == "log" })
+            }
+        }
+        let ending = "]" + monitorPrefix + event
+        return logs.reversed().contains { file in
+            guard let text = try? String(contentsOf: file, encoding: .utf8) else { return false }
+            return text.split(whereSeparator: \.isNewline).contains { $0.hasPrefix("[") && $0.hasSuffix(ending) }
+        }
+    }
+
     private static func archiveLegacyMonitorEvents(in directory: URL) {
         let files = FileManager.default
         guard !UserDefaults.standard.bool(forKey: legacyArchiveKey) else { return }

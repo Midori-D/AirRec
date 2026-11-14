@@ -34,8 +34,6 @@ private final class AirRecordAutomationGate: @unchecked Sendable {
         let generation: UInt64
         let callID: UUID
         let mayOpenMore: Bool
-        let direction: AirRecordDiagnosticAttempt.Direction
-        let lockState: AirRecordDiagnosticAttempt.LockState
     }
 
     private let lock = NSLock()
@@ -81,14 +79,10 @@ private final class AirRecordAutomationGate: @unchecked Sendable {
         let now = ProcessInfo.processInfo.systemUptime
         let decision = policy.decision(calls: calls, enabled: enabled, now: now,
                                        outgoingDelaySeconds: outgoingDelaySeconds)
-        guard case .inspect(let id) = decision, let call = calls.first(where: { $0.id == id && !$0.hasEnded }) else {
-            return (decision, nil)
-        }
+        guard case .inspect(let id) = decision else { return (decision, nil) }
         if deadlines[id] == nil { deadlines[id] = now + 20 }
         return (decision, Inspection(generation: generation, callID: id,
-                                     mayOpenMore: !moreReservations.contains(id),
-                                     direction: call.isOutgoing ? .outgoing : .incoming,
-                                     lockState: AirRecordDiagnosticAttempt.LockState(lockState.current)))
+                                     mayOpenMore: !moreReservations.contains(id)))
     }
 
     private func permitsLocked(_ inspection: Inspection) -> Bool {
@@ -158,7 +152,6 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     var isMonitoringReady: Bool {
         isRunning && (!standby.isEnabled || standby.isRunning)
     }
-    @Published private(set) var latestDiagnosticSnapshot: AirRecordDiagnosticSnapshot?
 
     var diagnosticSummary: String {
         let info = Bundle.main.infoDictionary
@@ -202,13 +195,11 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
     private var recordingWaitShortcutID: UUID?
     private var recordingWaitOwnedGeneration: UUID?
     private var recordingWaitPreparationResult: Bool?
-    private var lastDiagnosticCallID: UUID?
     private let defaults: UserDefaults
     private static let recentEventsKey = "AirRecord.activity.recentEvents"
     private static let recentEventsLimit = 10
     private static let enabledKey = "CallTap.RawAX.autoStartEnabled"
     private static let outgoingDelayKey = "AirRecord.outgoingDelaySeconds"
-    private static let diagnosticSnapshotKey = "AirRecord.diagnostics.latestAttempt"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -223,9 +214,6 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         } else {
             recentEvents = AppLog.legacyRecentMonitorEvents(limit: Self.recentEventsLimit)
             defaults.set(recentEvents, forKey: Self.recentEventsKey)
-        }
-        if let data = defaults.data(forKey: Self.diagnosticSnapshotKey) {
-            latestDiagnosticSnapshot = try? JSONDecoder().decode(AirRecordDiagnosticSnapshot.self, from: data)
         }
         standby.onStopped = { [weak self] message in
             guard let self, self.isRunning || self.isPreparing else { return }
@@ -719,16 +707,11 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
         case .inspect:
             guard let inspection else { return }
             guard gate.permits(inspection) else {
-                recordDiagnostic(inspection, stage: .callState, result: .blocked)
                 setStatus("잠금 해제 및 기본 통화 화면 열기 필요")
                 return
             }
             inspect(inspection)
-        case .expired(let callID):
-            if lastDiagnosticCallID == callID, let attempt = latestDiagnosticSnapshot?.attempt {
-                saveDiagnostic(.init(callDirection: attempt.callDirection, lockState: attempt.lockState,
-                                     stage: attempt.stage, resultCode: .timedOut), callID: callID)
-            }
+        case .expired:
             setStatus("녹음 준비 시간 초과 · 이번 통화 재시도 없음")
         case .multipleCalls:
             setStatus("활성 통화가 여러 건 · 자동 녹음 건너뜀")
@@ -803,56 +786,33 @@ final class AirRecordMonitor: NSObject, ObservableObject, CXCallObserverDelegate
             }
         }
         switch result {
-        case .success(.waiting(let detail, let stage)):
-            recordDiagnostic(inspection, stage: stage, result: .waiting)
+        case .success(.waiting(let detail)):
             setStatus(detail)
         case .success(.openedMore):
-            recordDiagnostic(inspection, stage: .recordButton, result: .waiting)
             setStatus("더 보기 열림 · 녹음 버튼 확인")
         case .success(.startSubmitted):
-            recordDiagnostic(inspection, stage: .recording, result: .submittedUnconfirmed)
             recordingResults[inspection.callID] = .init(outcome: .submittedUnconfirmed, generation: inspection.generation)
             setStatus("녹음 요청 전달 · 시작 미확인 · 재시도 없음")
         case .success(.alreadyRecording):
-            recordDiagnostic(inspection, stage: .recording, result: .alreadyRecording)
             recordingResults[inspection.callID] = .init(outcome: .alreadyRecording, generation: inspection.generation)
             gate.markAlreadyRecording(inspection)
             setStatus("이미 녹음 중 · 자동 시작 건너뜀")
         case .success(.recordingConfirmed):
-            recordDiagnostic(inspection, stage: .recording, result: .confirmed)
             recordingResults[inspection.callID] = .init(outcome: .confirmed, generation: inspection.generation)
             gate.markAlreadyRecording(inspection)
-            setStatus("통화 녹음 시작 확인")
+            AirRecordDiagnosticHistory.recordConfirmation(defaults: defaults)
+            setStatus(AirRecordDiagnosticHistory.recordingConfirmation)
         case .failure(let error):
             // Never emit native exception text: it can contain private UI text.
             if gate.startWasReserved(inspection) {
-                recordDiagnostic(inspection, stage: .recording, result: .submittedUnconfirmed)
                 recordingResults[inspection.callID] = .init(outcome: .failedAfterReservation, generation: inspection.generation)
                 setStatus("녹음 요청 결과 미확인 · 재시도 없음")
             } else {
-                recordDiagnostic(inspection, stage: AirRecordAXClient.failureStage(for: error), result: .failed)
                 setStatus("통화 화면 확인 실패 · 재시도 예정")
             }
             if let detail = AirRecordAXClient.diagnostic(for: error) {
                 recordEvent("접근성 검사: \(detail)")
             }
-        }
-    }
-
-    private func recordDiagnostic(_ inspection: AirRecordAutomationGate.Inspection,
-                                  stage: AirRecordDiagnosticAttempt.Stage,
-                                  result: AirRecordDiagnosticAttempt.Result) {
-        saveDiagnostic(.init(callDirection: inspection.direction, lockState: inspection.lockState,
-                             stage: stage, resultCode: result), callID: inspection.callID)
-    }
-
-    private func saveDiagnostic(_ attempt: AirRecordDiagnosticAttempt, callID: UUID) {
-        let snapshot = AirRecordDiagnosticSnapshot(device: .current, attempt: attempt)
-        lastDiagnosticCallID = callID
-        guard latestDiagnosticSnapshot != snapshot else { return }
-        latestDiagnosticSnapshot = snapshot
-        if let data = try? JSONEncoder().encode(snapshot) {
-            defaults.set(data, forKey: Self.diagnosticSnapshotKey)
         }
     }
 

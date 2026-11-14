@@ -18,7 +18,7 @@ def verify(path):
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         if info.get('CFBundleIdentifier') != 'com.midori.airrec':
             raise ValueError('Unexpected app identifier.')
-        if info.get('CFBundleShortVersionString') != '1.4.4' or str(info.get('CFBundleVersion')) != '47':
+        if info.get('CFBundleShortVersionString') != '1.4.5' or str(info.get('CFBundleVersion')) != '48':
             raise ValueError('Unexpected AX app version.')
         if info.get('CFBundleDisplayName') != 'AirRec' or info.get('CFBundleName') != 'AirRec':
             raise ValueError('Unexpected app display name.')
@@ -132,7 +132,7 @@ def verify(path):
         for marker in ('더 보기 버튼 확인', '통화 녹음 버튼 입력 수락', 'consents_to_ip_collection'):
             if marker.encode() not in executable:
                 raise ValueError('Call button diagnostics or IP consent is missing from the app binary.')
-        print(f'PASS: AirRec 1.4.4 (47), button diagnostics, IP consent, diagnostic API, Files access, location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
+        print(f'PASS: AirRec 1.4.5 (48), button diagnostics, IP consent, diagnostic API, Files access, location standby permission, AppIcon, outgoing, call-end and status Shortcut intents, Live Activity support, {count} signed arm64 binary(s), optional Always permission and contact GIF, no Helper/audio/microphone/direct connector/XCTest/profile.')
 
 if __name__ == '__main__':
     verify(sys.argv[1])
