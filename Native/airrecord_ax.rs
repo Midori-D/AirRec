@@ -603,7 +603,8 @@ mod tests {
             let mut button = node(1, true);
             button.label = label.into();
             button.value = Some(Value::String(subtitle.into()));
-            let live = [("53".into(), Value::String(subtitle.into()))].into_iter().collect();
+            let mut live = Dictionary::new();
+            live.insert("53".into(), Value::String(subtitle.into()));
             assert!(start(&button.label));
             assert!(record_button_can_start(&button, &live));
             assert!(!recording(&[button]));
@@ -626,7 +627,8 @@ mod tests {
         }
         button.value = None;
         for field in ["30", "53"] {
-            let live = [(field.into(), Value::Boolean(true))].into_iter().collect();
+            let mut live = Dictionary::new();
+            live.insert(field.into(), Value::Boolean(true));
             assert!(!record_button_can_start(&button, &live));
         }
         button.value = Some(Value::String("녹음 중".into()));
